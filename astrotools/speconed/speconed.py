@@ -231,9 +231,43 @@ class SpecOneD(object):
 
         self.header = hdu[0].header
 
-    def write_to_fits(self):
+    def save_to_fits(self, filename, overwrite = False):
+        """Save a SpecOneD spectrum to a fits file.
 
-        pass
+        Note: This save function does not store flux_errors, masks, fits etc. Only the original header, the dispersion (via the header), and the flux
+        are stored.
+
+        Parameters
+        ----------
+        filename : str
+            A string providing the path and filename for the fits file.
+
+        Raises
+        ------
+        ValueError
+            Raises an error when the filename exists and overwrite = False
+        """
+
+
+        hdu  = fits.PrimaryHDU(self.flux)
+        hdu.header = self.header
+
+        # Update header information
+        crval = self.dispersion[0]
+        cd = self.dispersion[1]-self.dispersion[0]
+        crpix = 1
+
+        hdu.header['CRVAL1'] = crval
+        hdu.header['CD1_1'] = cd
+        hdu.header['CDELT1'] = cd
+        hdu.header['CRPIX1'] = crpix
+
+        hdul = fits.HDUList([hdu])
+
+        try:
+            hdul.writeto(filename, overwrite = overwrite)
+        except:
+            raise ValueError("Filen with the same name already exists and overwrite is False")
 
     def reset_mask(self):
         """Reset the spectrum mask by repopulating it with a 1D array of
@@ -517,7 +551,10 @@ class SpecOneD(object):
 
         new_flux = self.flux + secondary_spectrum.flux
 
-        new_flux_err = np.sqrt(self.flux_err**2 + secondary_spectrum.flux_err**2)
+        if self.flux_err:
+            new_flux_err = np.sqrt(self.flux_err**2 + secondary_spectrum.flux_err**2)
+        else:
+            new_flux_err = None
 
         if copy_header == 'first':
             new_header = self.header
@@ -582,7 +619,10 @@ class SpecOneD(object):
 
         new_flux = self.flux - secondary_spectrum.flux
 
-        new_flux_err = np.sqrt(self.flux_err**2 + secondary_spectrum.flux_err**2)
+        if self.flux_err:
+            new_flux_err = np.sqrt(self.flux_err**2 + secondary_spectrum.flux_err**2)
+        else:
+            new_flux_err = None
 
         if copy_header == 'first':
             new_header = self.header
@@ -646,7 +686,10 @@ class SpecOneD(object):
 
         new_flux = self.flux / secondary_spectrum.flux
 
-        new_flux_err = np.sqrt( (self.flux_err/ secondary_spectrum.flux)**2  + (new_flux/secondary_spectrum.flux*secondary_spectrum.flux_err)**2 )
+        if self.flux_err:
+            new_flux_err = np.sqrt( (self.flux_err/ secondary_spectrum.flux)**2  + (new_flux/secondary_spectrum.flux*secondary_spectrum.flux_err)**2 )
+        else:
+            new_flux_err = None
 
 
         if copy_header == 'first':
@@ -708,7 +751,10 @@ class SpecOneD(object):
 
         new_flux = self.flux * secondary_spectrum.flux
 
-        new_flux_err = np.sqrt(secondary_spectrum.flux**2 * self.flux_err**2 + self.flux**2 * secondary_spectrum.flux_err**2)
+        if self.flux_err:
+            new_flux_err = np.sqrt(secondary_spectrum.flux**2 * self.flux_err**2 + self.flux**2 * secondary_spectrum.flux_err**2)
+        else:
+            new_flux_err = None
 
         if copy_header == 'first':
             new_header = self.header
@@ -848,7 +894,8 @@ class SpecOneD(object):
 
         if fill_value=='extrapolate':
             f = sp.interpolate.interp1d(self.dispersion, self.flux, kind=kind, fill_value='extrapolate')
-            f_err = sp.interpolate.interp1d(self.dispersion, self.flux_err, kind=kind, fill_value='extrapolate')
+            if self.flux_err :
+                f_err = sp.interpolate.interp1d(self.dispersion, self.flux_err, kind=kind, fill_value='extrapolate')
             print ('Warning: Values outside the original dispersion range will be extrapolated!')
         elif fill_value == 'const':
             fill_lo = np.median(self.flux[0:10])
@@ -856,18 +903,21 @@ class SpecOneD(object):
             f = sp.interpolate.interp1d(self.dispersion, self.flux, kind=kind,
                                         bounds_error= False,
                                         fill_value=(fill_lo, fill_hi))
-            fill_lo_err = np.median(self.flux_err[0:10])
-            fill_hi_err = np.median(self.flux_err[-11:-1])
-            f_err = sp.interpolate.interp1d(self.dispersion, self.flux_err, kind=kind, bounds_error= False,
+            if self.flux_err:
+                fill_lo_err = np.median(self.flux_err[0:10])
+                fill_hi_err = np.median(self.flux_err[-11:-1])
+                f_err = sp.interpolate.interp1d(self.dispersion, self.flux_err, kind=kind, bounds_error= False,
                                         fill_value=(fill_lo_err, fill_hi_err))
         else:
             f = sp.interpolate.interp1d(self.dispersion, self.flux, kind=kind)
-            f_err = sp.interpolate.interp1d(self.dispersion, self.flux_err, kind=kind)
+            if self.flux_err:
+                f_err = sp.interpolate.interp1d(self.dispersion, self.flux_err, kind=kind)
 
         self.dispersion = new_dispersion
         self.reset_mask()
         self.flux = f(self.dispersion)
-        self.flux_err = f_err(self.dispersion)
+        if self.flux_err:
+            self.flux_err = f_err(self.dispersion)
 
     def smooth(self, width, kernel="boxcar", inplace=False):
 
@@ -1027,11 +1077,14 @@ class SpecOneD(object):
 
         average_spec_flux = np.trapz(spec2.flux, spec2.dispersion)
 
+        self.scale = (average_spec_flux/average_self_flux)
+
         if inplace:
             self.flux = self.flux * (average_spec_flux/average_self_flux)
         else:
             spec = self.copy()
             flux = self.flux * (average_spec_flux/average_self_flux)
+            spec.scale = self.scale
             spec.flux = flux
 
             return spec

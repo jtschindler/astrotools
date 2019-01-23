@@ -414,7 +414,7 @@ class SpecOneDGui(QMainWindow):
 
     def ResultPlotMode(self, mode, normalize=True):
 
-        """ This function activates the simple plotting mode.
+        """ This function activates the result plotting mode.
 
         Parameters
         ----------
@@ -429,15 +429,20 @@ class SpecOneDGui(QMainWindow):
 
         self.mode = mode
 
+
         print (self.act, self.act+1, self.in_dict['spec_list'])
 
         if normalize:
             for spec in self.in_dict['spec_list'][:self.act] + self.in_dict['spec_list'][self.act+1:]:
 
-                        spec.renormalize_by_spectrum(
+                spec.renormalize_by_spectrum(
                             self.in_dict['spec_list'][self.act],
                             trim_mode='wav',
                             inplace=True)
+
+
+
+
 
         # Calculating default plot limits
         self.in_dict['x_lo'] = min(self.in_dict['spec_list'][self.act].dispersion)
@@ -489,7 +494,7 @@ class SpecOneDGui(QMainWindow):
         self.layout.addLayout(self.specbox_main)
         self.layout.addLayout(self.specbox_result)
 
-        self.setWindowTitle("Interactive SpecOneD GUI - SimplePlotMode")
+        self.setWindowTitle("Interactive SpecOneD GUI - ResultPlotMode")
 
         self.gcid = self.specplotcanvas.mpl_connect('key_press_event',
                                                     self.on_press_simple)
@@ -589,6 +594,21 @@ class SpecOneDGui(QMainWindow):
             self.statusBar().showMessage("Mode: Trim Dispersion", 5000)
             self.cid = self.specplotcanvas.mpl_connect('key_press_event',
                                                        self.on_press_trim)
+        elif event.key == "s":
+            self.specplotcanvas.mpl_disconnect(self.gcid)
+            self.scale = self.in_dict['spec_list'][self.act].scale
+            self.dscale = 0.1
+            self.shift = z_to_velocity(self.in_dict['spec_list'][self.act].z)
+            self.dshift = 5
+            self.yshift = self.in_dict['spec_list'][self.act].yshift
+            self.dyshift = 20
+            self.in_dict['spec_list'][self.act].unscaled_flux = self.in_dict['spec_list'][self.act].flux
+
+            self.set_scaleshift_hbox()
+            self.statusBar().showMessage("Mode: Scale spectrum", 5000)
+            self.cid = self.specplotcanvas.mpl_connect('key_press_event',
+                                                       self.on_press_scaleshift)
+
         elif event.key == "v":
             self.specplotcanvas.mpl_disconnect(self.gcid)
 
@@ -824,6 +844,162 @@ class SpecOneDGui(QMainWindow):
 
         for spec in self.in_dict['spec_list']:
             spec.trim_dispersion([self.tx1, self.tx2], inplace=True)
+
+        self.specplotcanvas.plot(self.in_dict, self.act)
+        if self.mode == "divide" or self.mode == "multiply":
+            self.resultcanvas.result_plot(self.in_dict, self.mode)
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+    def set_scaleshift_hbox(self):
+        """ This function sets up the hbox layout for the scale flux mode of
+        the GUI
+
+        """
+        self.scale_lbl = QLabel("Abritrary scaling:")
+        self.scale_val = QLabel("{0:.3f}".format(self.scale))
+        self.scale_in = QLineEdit("{0:.2f}".format(self.scale))
+        self.scale_in.setMaxLength(7)
+
+        self.dscale_lbl = QLabel("Abritrary scaling increment:")
+        self.dscale_val = QLabel("{0:.3f}".format(self.dscale))
+        self.dscale_in = QLineEdit("{0:.2f}".format(self.dscale))
+        self.dscale_in.setMaxLength(7)
+
+        self.vshift_lbl = QLabel("Velocity shift (km/s):")
+        self.vshift_val = QLabel("{0:.3f}".format(self.shift))
+
+        self.dvshift_lbl = QLabel("Velocity shift increment (km/s):")
+        self.dvshift_val = QLabel("{0:.3f}".format(self.dshift))
+        self.dvshift_in = QLineEdit("{0:.2f}".format(self.dshift))
+        self.dvshift_in.setMaxLength(7)
+
+        self.yshift_lbl = QLabel("Arbitrary flux shift (ADU):")
+        self.yshift_val = QLabel("{0:.2f}".format(self.yshift))
+
+        self.dyshift_lbl = QLabel("Arbitrary flux shift increment (ADU):")
+        self.dyshift_val = QLabel("{0:.2f}".format(self.dyshift))
+        self.dyshift_in = QLineEdit("{0:.2f}".format(self.dyshift))
+        self.dyshift_in.setMaxLength(7)
+
+        self.hbox = QHBoxLayout()
+
+        for w in [self.scale_lbl,
+                  self.scale_val,
+                  self.scale_in,
+                  self.dscale_lbl,
+                  self.dscale_val,
+                  self.dscale_in,
+                  self.vshift_lbl,
+                  self.vshift_val,
+                  self.dvshift_lbl,
+                  self.dvshift_val,
+                  self.dvshift_in,
+                  self.yshift_lbl,
+                  self.yshift_val,
+                  self.dyshift_lbl,
+                  self.dyshift_val,
+                  self.dyshift_in]:
+            self.hbox.addWidget(w)
+            self.hbox.setAlignment(w, QtCore.Qt.AlignVCenter)
+
+        self.layout.addLayout(self.hbox)
+
+        self.scale_in.returnPressed.connect(self.set_scale)
+        self.dscale_in.returnPressed.connect(self.set_dscale)
+        self.dvshift_in.returnPressed.connect(self.set_dvshift)
+        self.dyshift_in.returnPressed.connect(self.set_dyshift)
+
+    def set_dyshift(self):
+        """ This function sets dyshift to the user input value.
+
+        """
+
+        self.dyshift = float(self.dyshift_in.text())
+        self.dyshift_val.setText("{0:.2f}".format(self.dyshift))
+
+    def set_scale(self):
+        """ This function sets scale to the user input value.
+
+        """
+
+        self.scale = float(self.scale_in.text())
+        self.scale_val.setText("{0:.2f}".format(self.scale))
+
+    def set_dscale(self):
+        """ This function sets scale to the user input value.
+
+        """
+
+        self.dscale = float(self.dscale_in.text())
+        self.dscale_val.setText("{0:.2f}".format(self.dscale))
+
+
+
+    def on_press_scaleshift(self, event):
+        """ This function presents the key press options for the mode>
+        "Shift dispersion".
+
+        Parameters
+        ----------
+        event : key_press_event
+            Key press event to evaluate
+        """
+        if event.key=="a":
+            self.shift -= self.dshift
+            self.in_dict['spec_list'][self.act].z = velocity_to_z(self.shift)
+            self.vshift_val.setText("{0:.2f}".format(self.shift))
+            self.statusBar().showMessage("velocity shift=%d km/s; dshift=%d km/s" % (self.shift, self.dshift), 2000)
+            self.shift_redraw()
+        elif event.key=="d":
+            self.shift += self.dshift
+            self.in_dict['spec_list'][self.act].z = velocity_to_z(self.shift)
+            self.vshift_val.setText("{0:.2f}".format(self.shift))
+            self.statusBar().showMessage("velocity shift=%d km/s; dshift=%d km/s" % (self.shift, self.dshift), 2000)
+            self.shift_redraw()
+        elif event.key=="w":
+            self.yshift += self.dyshift
+            self.yshift_val.setText("{0:.2f}".format(self.yshift))
+            self.in_dict['spec_list'][self.act].yshift = self.yshift
+            self.shift_redraw()
+        elif event.key=="s":
+            self.yshift -= self.dyshift
+            self.yshift_val.setText("{0:.2f}".format(self.yshift))
+            self.in_dict['spec_list'][self.act].yshift = self.yshift
+            self.shift_redraw()
+        elif event.key == QtCore.Qt.Key_Up or event.key == "8":
+            self.scale += self.dscale
+            self.scale_val.setText("{0:.2f}".format(self.scale))
+            self.in_dict['spec_list'][self.act].scale= self.scale
+            self.in_dict['spec_list'][self.act].flux = self.in_dict['spec_list'][self.act].unscaled_flux * self.scale
+            self.shift_redraw()
+        elif event.key == QtCore.Qt.Key_Down or event.key =="2":
+            self.scale -= self.dscale
+            self.scale_val.setText("{0:.2f}".format(self.scale))
+            self.in_dict['spec_list'][self.act].scale= self.scale
+            self.in_dict['spec_list'][self.act].flux = self.in_dict['spec_list'][self.act].unscaled_flux * self.scale
+            self.shift_redraw()
+        elif event.key == "r":
+            self.in_dict['spec_list'][self.act].restore()
+            self.in_dict['spec_list'][self.act].reset_mask()
+            self.specplotcanvas.plot(self.in_dict, self.act)
+            self.scale = 1.0
+            self.in_dict['spec_list'][self.act].unscaled_flux  = self.in_dict['spec_list'][self.act].flux
+            self.in_dict['spec_list'][self.act].scale= self.scale
+            self.shift_redraw()
+        elif event.key == "q":
+            self.shift_redraw()
+            self.specplotcanvas.mpl_disconnect(self.cid)
+            self.remove_last_layout(self.hbox)
+            self.gcid = self.specplotcanvas.mpl_connect('key_press_event', self.on_press_simple)
+            self.in_dict['spec_list'][self.act].scale= 1.0
+
+
+    def scaleshift_redraw(self):
+        """ Redraw function for the "Shift dispersion" mode
+
+        """
 
         self.specplotcanvas.plot(self.in_dict, self.act)
         if self.mode == "divide" or self.mode == "multiply":
@@ -1131,7 +1307,7 @@ class SpecOneDGui(QMainWindow):
         self.fit_continuum()
 
     def upd_fitting_values(self):
-        """ This function sets assings the user input to the fitting variables.
+        """ This function assingns the user input to the fitting variables.
 
         """
         self.fitfunc = self.fitfunc_in.text()
@@ -1187,6 +1363,15 @@ class SpecOneDGui(QMainWindow):
 
         self.specplotcanvas.plot(self.in_dict, self.act)
 
+    def fit_region(self):
+        pass
+
+    def replace_spectrum_with_fit(self):
+        pass
+
+    def save_fit_to_file(self):
+        pass
+
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 
@@ -1212,22 +1397,70 @@ def low_order_fit(spec):
     return form.GetValue()
 
 
-def example():
-    spec = SpecOneD()
-    spec2 = SpecOneD()
+# def example():
+#     spec = SpecOneD()
+#     spec2 = SpecOneD()
+#
+#     spec.plot()
+#     spec2.plot()
+#
+#     spec.read_from_fits('J034151_L1_combined.fits', unit='f_lam')
+#     spec2.read_from_fits('HD24000_L1_combined.fits', unit='f_lam')
+#     # spec.read_from_fits('HD287515_avg.fits', unit='f_lam')
+#     # spec2.read_from_fits('uka0v.fits', unit='f_lam')
+#
+#
+#     app = QtWidgets.QApplication(sys.argv)
+#     form = SpecOneDGui(spec_list=[spec,spec2], mode="divide")
+#     form.show()
+#
+#     app.exec_()
+#
+#     print (form.GetValue().dispersion)
 
-    spec.read_from_fits('Q1652_avg.fits', unit='f_lam')
-    spec2.read_from_fits('HD287515_avg.fits', unit='f_lam')
-    # spec.read_from_fits('HD287515_avg.fits', unit='f_lam')
-    # spec2.read_from_fits('uka0v.fits', unit='f_lam')
+
+def telluric_correction(science, telluric, telluric_model):
+
+    # simplified version of telluric correction
+
+    # science = target * extinction_target * atmosphere * throughput
+    # telluric = star * extinction_star * atmosphere * throughput
+    # telluric_model = star
+
+    # 1) take care of galactic extinction
+    # 2) target = science / telluric * telluric_model
+    # 2a) science / telluric (with scale and shift telluric)
+    # 2b) science * telluric_model (apply same velocity shift as for telluric)
+    # 3) normalize flux by magnitude
+    # ALTERNATIVELY DIVIDE TELLURIC BY TELLURIC_MODEL BEFORE
 
 
+    # 1) Extinction corrections
+
+    # 2) Mask out absorption lines in telluric spectrum
+
+    # 2) science / telluric
     app = QtWidgets.QApplication(sys.argv)
     form = SpecOneDGui(spec_list=[spec,spec2], mode="divide")
     form.show()
-
     app.exec_()
 
-    print (form.GetValue().dispersion)
+
+    # divide science by scaled/shifted telluric to get rid of telluric features
+
+def example():
+
+    science = SpecOneD()
+    telluric = SpecOneD()
+    telluric_model = SpecOneD()
+
+    science.read_from_fits('J034151_L1_combined.fits')
+    telluric.read_from_fits('HD24000_L1_combined.fits')
+    telluric_model.read_from_fits('uka0v.fits')
+
+    app = QtWidgets.QApplication(sys.argv)
+    form = SpecOneDGui(spec_list=[science,telluric], mode="divide")
+    form.show()
+    app.exec_()
 
 # example()
