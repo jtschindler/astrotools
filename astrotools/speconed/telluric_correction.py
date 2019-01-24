@@ -69,6 +69,8 @@ def telluric_correction(inlist, interactive=True):
 
 telluric_correction(inlist)
 
+# need to test this
+
 # References Vacca et al. 2003, Maiolino et al. 1996
 # model spectrum needs to be shifted, scaled and reddened; altering depth of H lines, and resampling to wavelength scale
 # radial velocity if known could be entered
