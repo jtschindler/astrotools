@@ -44,7 +44,7 @@ import sys
 from scipy import interpolate
 
 from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QVBoxLayout, QSizePolicy, QMessageBox, QWidget, QPushButton, QLabel, QHBoxLayout, QLineEdit, QCheckBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QVBoxLayout, QSizePolicy, QMessageBox, QWidget, QPushButton, QLabel, QHBoxLayout, QLineEdit, QCheckBox, QFileDialog
 from PyQt5.QtGui import QIcon
 
 
@@ -202,7 +202,7 @@ class SpecPlotCanvas(FigureCanvas):
 
         if spec_prime.fit_flux is not None:
 
-            self.ax.plot(spec_prime.fit_dispersion, spec_prime.fit_flux,'b')
+            self.ax.plot(spec_prime.fit_dispersion, spec_prime.fit_flux+spec_prime.yshift,'b')
 
 
         # Setting the plot boundaries
@@ -289,20 +289,22 @@ class ResultCanvas(FigureCanvas):
 
         # multiplication/divison of the spectra
         if mode == "divide":
-            result_spec = spec_prime.divide(spec_sec)
+            self.result_spec = spec_prime.divide(spec_sec)
         if mode == "multiply":
-            result_spec = spec_prime.multiply(spec_sec)
+            self.result_spec = spec_prime.multiply(spec_sec)
 
-        self.ax.plot(result_spec.dispersion[result_spec.mask],
-                     result_spec.flux[result_spec.mask], 'k', lw=1.5)
+        in_dict['result_spec'] = self.result_spec
+
+        self.ax.plot(self.result_spec.dispersion[self.result_spec.mask],
+                     self.result_spec.flux[self.result_spec.mask], 'k', lw=1.5)
 
         # Setting the plot boundaries
         x2_lo = in_dict['x2_lo']
         x2_hi = in_dict['x2_hi']
-        lo_index = np.argmin(np.abs(result_spec.dispersion - x2_lo))
-        hi_index = np.argmin(np.abs(result_spec.dispersion - x2_hi))
-        median = np.median(result_spec.flux[lo_index : hi_index])
-        std = np.std(result_spec.flux[lo_index : hi_index])
+        lo_index = np.argmin(np.abs(self.result_spec.dispersion - x2_lo))
+        hi_index = np.argmin(np.abs(self.result_spec.dispersion - x2_hi))
+        median = np.median(self.result_spec.flux[lo_index : hi_index])
+        std = np.std(self.result_spec.flux[lo_index : hi_index])
 
         self.ax.set_xlim(x2_lo, x2_hi)
         # self.ax.set_ylim(in_dict['y2_lo'], in_dict['y2_hi'])
@@ -352,13 +354,19 @@ class SpecOneDGui(QMainWindow):
         self.shift = None
         self.dshift = None
         self.yshift = None
+        self.dscale = None
+        self.dyshift = None
 
         self.mx1 = 0
         self.mx2 = 0
 
+        self.fx1 = 0
+        self.fx2 = 0
+
         self.spec_list_copy = spec_list
 
         self.in_dict = {'spec_list': spec_list,
+                        'result_spec' : None,
                         'x_lo': None,
                         'x_hi': None,
                         'y_lo': None,
@@ -411,6 +419,14 @@ class SpecOneDGui(QMainWindow):
             widgetToRemove.setParent( None )
         self.layout.removeItem(self.layout.itemAt(-1))
 
+    def redraw(self):
+        """ Redraws the canvasses
+
+        """
+
+        self.specplotcanvas.plot(self.in_dict, self.act)
+        if self.mode == "divide" or self.mode == "multiply":
+            self.resultcanvas.result_plot(self.in_dict, self.mode)
 
     def ResultPlotMode(self, mode, normalize=True):
 
@@ -561,6 +577,14 @@ class SpecOneDGui(QMainWindow):
 
         return self.in_dict['spec_list'][self.act]
 
+    def set_canvas_active(self):
+        self.specplotcanvas.setFocusPolicy(QtCore.Qt.ClickFocus)
+        if hasattr(self, 'resultcanvas'):
+            self.resultcanvas.setFocusPolicy(QtCore.Qt.ClickFocus)
+        self.specplotcanvas.setFocus()
+
+
+
     def on_press_simple(self, event):
         """ This function presents the key press options for the general mode.
 
@@ -572,20 +596,35 @@ class SpecOneDGui(QMainWindow):
 
         if event.key == "1":
             self.act = 0
-            self.specplotcanvas.plot(self.in_dict, self.act)
+            self.redraw()
 
         elif event.key == "2":
             self.act = 1
-            self.specplotcanvas.plot(self.in_dict, self.act)
+            self.redraw()
 
         elif event.key == "3":
             self.act = 2
-            self.specplotcanvas.plot(self.in_dict, self.act)
+            self.redraw()
 
         elif event.key == "e":
             self.specplotcanvas.mpl_disconnect(self.gcid)
             self.statusBar().showMessage("Mode: Zoom", 5000)
             self.handleStart()
+
+        elif event.key == "R":
+            self.statusBar().showMessage("Restoring all spectra", 5000)
+            # Restore all spectra
+            self.in_dict['spec_list'][self.act].restore()
+            for spec in self.in_dict['spec_list'][:self.act] + self.in_dict['spec_list'][self.act+1:]:
+                spec.restore()
+                spec.renormalize_by_spectrum(
+                    self.in_dict['spec_list'][self.act],
+                    trim_mode='wav',
+                    inplace=True)
+
+            self.redraw()
+
+
 
         elif event.key == "t":
             self.specplotcanvas.mpl_disconnect(self.gcid)
@@ -594,14 +633,24 @@ class SpecOneDGui(QMainWindow):
             self.statusBar().showMessage("Mode: Trim Dispersion", 5000)
             self.cid = self.specplotcanvas.mpl_connect('key_press_event',
                                                        self.on_press_trim)
+
+        elif event.key == "S":
+            self.save_result()
+
         elif event.key == "s":
             self.specplotcanvas.mpl_disconnect(self.gcid)
             self.scale = self.in_dict['spec_list'][self.act].scale
-            self.dscale = 0.1
             self.shift = z_to_velocity(self.in_dict['spec_list'][self.act].z)
-            self.dshift = 5
             self.yshift = self.in_dict['spec_list'][self.act].yshift
-            self.dyshift = 20
+
+            if self.dscale == None:
+                self.dscale = 0.1
+            if self.dshift == None:
+                self.dshift = 3
+            if self.dyshift == None:
+                self.dyshift = 20
+
+            # this line might be troublesome...
             self.in_dict['spec_list'][self.act].unscaled_flux = self.in_dict['spec_list'][self.act].flux
 
             self.set_scaleshift_hbox()
@@ -613,7 +662,8 @@ class SpecOneDGui(QMainWindow):
             self.specplotcanvas.mpl_disconnect(self.gcid)
 
             self.shift = z_to_velocity(self.in_dict['spec_list'][self.act].z)
-            self.dshift = 5
+            if self.dshift == None:
+                self.dshift = 5
             self.yshift = self.in_dict['spec_list'][self.act].yshift
 
             self.set_shift_hbox()
@@ -629,17 +679,57 @@ class SpecOneDGui(QMainWindow):
 
         elif event.key == "f":
             self.specplotcanvas.mpl_disconnect(self.gcid)
-            self.fit_func = "legendre"
-            self.order = 6
-            self.clip_sig = 2.5
-            self.clip_bsize = 120
+
+            if not hasattr(self, 'fit_func'):
+                self.fit_func = "legendre"
+                self.order = 6
+                self.clip_sig = 2.5
+                self.clip_bsize = 120
+                self.clip_flux = False
+
+
             self.set_fitting_hbox()
-            self.clip_flux = False
+
             self.statusBar().showMessage("Mode: Interactive Continuum Fitting", 5000)
             self.cid = self.specplotcanvas.mpl_connect('key_press_event', self.on_press_fitting)
 
         elif event.key == "q":
             self.close()
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+    def save_active(self):
+        pass
+
+    def save_result(self):
+        filename = self.show_savefile_dialog()
+
+        spec = self.in_dict['result_spec']
+
+
+        try:
+            object_1 = self.in_dict['spec_list'][0].header['OBJECT']
+        except:
+            object_1 = 'OBJECT'
+        try:
+            object_2 = self.in_dict['spec_list'][1].header['OBJECT']
+        except:
+            object_2 = 'OBJECT'
+
+
+        comment = str(object_1)+' '+str(self.mode)+' '+str(object_2)
+
+        print(comment)
+
+        self.in_dict['result_spec'].save_to_fits(filename, comment=comment)
+
+    def show_savefile_dialog(self):
+
+        filename, ftype = QFileDialog.getSaveFileName(self,"Save File",os.getcwd(), 'FITS (*.fits)')
+
+        return filename
+
 
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
@@ -669,7 +759,7 @@ class SpecOneDGui(QMainWindow):
                 self.statusBar().showMessage("Zommed to %d - %d" % (self._wx1, self._wx2), 5000)
                 self.specplotcanvas.mpl_disconnect(self.cid)
                 self.gcid = self.specplotcanvas.mpl_connect('key_press_event', self.on_press_simple)
-                self.set_plot_ranges()
+                self.redraw()
 
 
 
@@ -682,16 +772,6 @@ class SpecOneDGui(QMainWindow):
         self.specplotcanvas.mpl_disconnect(self.cid)
         self.statusBar().showMessage("Stopped Zoom mode", 5000)
         self.gcid = self.specplotcanvas.mpl_connect('key_press_event', self.on_press_simple)
-
-    def set_plot_ranges(self):
-        """ Setting the new plot boundaries by calling all active plots.
-
-        """
-
-        self.specplotcanvas.plot(self.in_dict, self.act)
-        if self.mode == "divide" or self.mode == "multiply":
-            self.resultcanvas.result_plot(self.in_dict, self.mode)
-
 
 
     def on_press_set_ranges(self, event):
@@ -731,7 +811,7 @@ class SpecOneDGui(QMainWindow):
             self.in_dict['x2_lo'] = self.in_dict['x_lo']
             self.in_dict['x2_hi'] = self.in_dict['x_hi']
 
-            self.set_plot_ranges()
+            self.redraw()
 
             self.handleStop()
 
@@ -798,8 +878,10 @@ class SpecOneDGui(QMainWindow):
             self.trim_all()
 
         elif event.key == "r":
+            self.statusBar().showMessage("Restore active spectrum" % (event.xdata), 2000)
             self.in_dict['spec_list'][self.act].restore()
-            self.specplotcanvas.plot(self.in_dict, self.act)
+            self.in_dict['spec_list'][self.act].flux
+            self.redraw()
 
         elif event.key == "q":
             self.specplotcanvas.mpl_disconnect(self.cid)
@@ -825,9 +907,7 @@ class SpecOneDGui(QMainWindow):
         spec_active.trim_dispersion([self.tx1, self.tx2], inplace=True)
         self.in_dict['spec_list'][self.act] = spec_active
 
-        self.specplotcanvas.plot(self.in_dict, self.act)
-        if self.mode == "divide" or self.mode == "multiply":
-            self.resultcanvas.result_plot(self.in_dict, self.mode)
+        self.redraw()
 
     def trim_all(self):
         """ Trims all spectra in 'spec_list' to the specified dispersion
@@ -845,9 +925,7 @@ class SpecOneDGui(QMainWindow):
         for spec in self.in_dict['spec_list']:
             spec.trim_dispersion([self.tx1, self.tx2], inplace=True)
 
-        self.specplotcanvas.plot(self.in_dict, self.act)
-        if self.mode == "divide" or self.mode == "multiply":
-            self.resultcanvas.result_plot(self.in_dict, self.mode)
+        self.redraw()
 
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
@@ -860,12 +938,12 @@ class SpecOneDGui(QMainWindow):
         self.scale_lbl = QLabel("Abritrary scaling:")
         self.scale_val = QLabel("{0:.3f}".format(self.scale))
         self.scale_in = QLineEdit("{0:.2f}".format(self.scale))
-        self.scale_in.setMaxLength(7)
+        self.scale_in.setMaxLength(12)
 
         self.dscale_lbl = QLabel("Abritrary scaling increment:")
         self.dscale_val = QLabel("{0:.3f}".format(self.dscale))
         self.dscale_in = QLineEdit("{0:.2f}".format(self.dscale))
-        self.dscale_in.setMaxLength(7)
+        self.dscale_in.setMaxLength(12)
 
         self.vshift_lbl = QLabel("Velocity shift (km/s):")
         self.vshift_val = QLabel("{0:.3f}".format(self.shift))
@@ -873,7 +951,7 @@ class SpecOneDGui(QMainWindow):
         self.dvshift_lbl = QLabel("Velocity shift increment (km/s):")
         self.dvshift_val = QLabel("{0:.3f}".format(self.dshift))
         self.dvshift_in = QLineEdit("{0:.2f}".format(self.dshift))
-        self.dvshift_in.setMaxLength(7)
+        self.dvshift_in.setMaxLength(12)
 
         self.yshift_lbl = QLabel("Arbitrary flux shift (ADU):")
         self.yshift_val = QLabel("{0:.2f}".format(self.yshift))
@@ -881,7 +959,7 @@ class SpecOneDGui(QMainWindow):
         self.dyshift_lbl = QLabel("Arbitrary flux shift increment (ADU):")
         self.dyshift_val = QLabel("{0:.2f}".format(self.dyshift))
         self.dyshift_in = QLineEdit("{0:.2f}".format(self.dyshift))
-        self.dyshift_in.setMaxLength(7)
+        self.dyshift_in.setMaxLength(12)
 
         self.hbox = QHBoxLayout()
 
@@ -906,35 +984,26 @@ class SpecOneDGui(QMainWindow):
 
         self.layout.addLayout(self.hbox)
 
-        self.scale_in.returnPressed.connect(self.set_scale)
-        self.dscale_in.returnPressed.connect(self.set_dscale)
-        self.dvshift_in.returnPressed.connect(self.set_dvshift)
-        self.dyshift_in.returnPressed.connect(self.set_dyshift)
+        self.scale_in.returnPressed.connect(self.upd_scaleshift_values)
+        self.dscale_in.returnPressed.connect(self.upd_scaleshift_values)
+        self.dvshift_in.returnPressed.connect(self.upd_scaleshift_values)
+        self.dyshift_in.returnPressed.connect(self.upd_scaleshift_values)
 
-    def set_dyshift(self):
+    def upd_scaleshift_values(self):
         """ This function sets dyshift to the user input value.
 
         """
 
         self.dyshift = float(self.dyshift_in.text())
         self.dyshift_val.setText("{0:.2f}".format(self.dyshift))
-
-    def set_scale(self):
-        """ This function sets scale to the user input value.
-
-        """
-
         self.scale = float(self.scale_in.text())
         self.scale_val.setText("{0:.2f}".format(self.scale))
-
-    def set_dscale(self):
-        """ This function sets scale to the user input value.
-
-        """
-
         self.dscale = float(self.dscale_in.text())
         self.dscale_val.setText("{0:.2f}".format(self.dscale))
+        self.dshift = float(self.dvshift_in.text())
+        self.dvshift_val.setText("{0:.2f}".format(self.dshift))
 
+        self.set_canvas_active()
 
 
     def on_press_scaleshift(self, event):
@@ -949,61 +1018,51 @@ class SpecOneDGui(QMainWindow):
         if event.key=="a":
             self.shift -= self.dshift
             self.in_dict['spec_list'][self.act].z = velocity_to_z(self.shift)
-            self.vshift_val.setText("{0:.2f}".format(self.shift))
+            self.vshift_val.setText("{0:.5f}".format(self.shift))
             self.statusBar().showMessage("velocity shift=%d km/s; dshift=%d km/s" % (self.shift, self.dshift), 2000)
-            self.shift_redraw()
+            self.redraw()
         elif event.key=="d":
             self.shift += self.dshift
             self.in_dict['spec_list'][self.act].z = velocity_to_z(self.shift)
-            self.vshift_val.setText("{0:.2f}".format(self.shift))
+            self.vshift_val.setText("{0:.5f}".format(self.shift))
             self.statusBar().showMessage("velocity shift=%d km/s; dshift=%d km/s" % (self.shift, self.dshift), 2000)
-            self.shift_redraw()
+            self.redraw()
         elif event.key=="w":
             self.yshift += self.dyshift
-            self.yshift_val.setText("{0:.2f}".format(self.yshift))
+            self.yshift_val.setText("{0:.5f}".format(self.yshift))
             self.in_dict['spec_list'][self.act].yshift = self.yshift
-            self.shift_redraw()
+            self.redraw()
         elif event.key=="s":
             self.yshift -= self.dyshift
-            self.yshift_val.setText("{0:.2f}".format(self.yshift))
+            self.yshift_val.setText("{0:.5f}".format(self.yshift))
             self.in_dict['spec_list'][self.act].yshift = self.yshift
-            self.shift_redraw()
+            self.redraw()
         elif event.key == QtCore.Qt.Key_Up or event.key == "8":
             self.scale += self.dscale
-            self.scale_val.setText("{0:.2f}".format(self.scale))
+            self.scale_val.setText("{0:.5f}".format(self.scale))
             self.in_dict['spec_list'][self.act].scale= self.scale
             self.in_dict['spec_list'][self.act].flux = self.in_dict['spec_list'][self.act].unscaled_flux * self.scale
-            self.shift_redraw()
+            self.redraw()
         elif event.key == QtCore.Qt.Key_Down or event.key =="2":
             self.scale -= self.dscale
-            self.scale_val.setText("{0:.2f}".format(self.scale))
+            self.scale_val.setText("{0:.6f}".format(self.scale))
             self.in_dict['spec_list'][self.act].scale= self.scale
             self.in_dict['spec_list'][self.act].flux = self.in_dict['spec_list'][self.act].unscaled_flux * self.scale
-            self.shift_redraw()
+            self.redraw()
         elif event.key == "r":
             self.in_dict['spec_list'][self.act].restore()
             self.in_dict['spec_list'][self.act].reset_mask()
-            self.specplotcanvas.plot(self.in_dict, self.act)
             self.scale = 1.0
             self.in_dict['spec_list'][self.act].unscaled_flux  = self.in_dict['spec_list'][self.act].flux
             self.in_dict['spec_list'][self.act].scale= self.scale
-            self.shift_redraw()
+            self.redraw()
         elif event.key == "q":
-            self.shift_redraw()
+            self.redraw()
             self.specplotcanvas.mpl_disconnect(self.cid)
             self.remove_last_layout(self.hbox)
             self.gcid = self.specplotcanvas.mpl_connect('key_press_event', self.on_press_simple)
-            self.in_dict['spec_list'][self.act].scale= 1.0
+            # self.in_dict['spec_list'][self.act].scale= 1.0
 
-
-    def scaleshift_redraw(self):
-        """ Redraw function for the "Shift dispersion" mode
-
-        """
-
-        self.specplotcanvas.plot(self.in_dict, self.act)
-        if self.mode == "divide" or self.mode == "multiply":
-            self.resultcanvas.result_plot(self.in_dict, self.mode)
 
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
@@ -1015,18 +1074,18 @@ class SpecOneDGui(QMainWindow):
         """
 
         self.vshift_lbl = QLabel("Velocity shift (km/s):")
-        self.vshift_val = QLabel("{0:.3f}".format(self.shift))
+        self.vshift_val = QLabel("{0:.5f}".format(self.shift))
         self.dvshift_lbl = QLabel("Velocity shift increment (km/s):")
-        self.dvshift_val = QLabel("{0:.3f}".format(self.dshift))
+        self.dvshift_val = QLabel("{0:.5f}".format(self.dshift))
 
         self.yshift_lbl = QLabel("Arbitrary flux shift (ADU):")
-        self.yshift_val = QLabel("{0:.2f}".format(self.yshift))
+        self.yshift_val = QLabel("{0:.5f}".format(self.yshift))
 
         # self.vshift_in = QLineEdit("{0:.2f}".format(self.shift))
         # self.vshift_in.setMaxLength(7)
 
-        self.dvshift_in = QLineEdit("{0:.2f}".format(self.dshift))
-        self.dvshift_in.setMaxLength(7)
+        self.dvshift_in = QLineEdit("{0:.5f}".format(self.dshift))
+        self.dvshift_in.setMaxLength(10)
 
         self.hbox = QHBoxLayout()
 
@@ -1045,7 +1104,7 @@ class SpecOneDGui(QMainWindow):
         """
 
         self.dshift = float(self.dvshift_in.text())
-        self.dvshift_val.setText("{0:.2f}".format(self.dshift))
+        self.dvshift_val.setText("{0:.5f}".format(self.dshift))
 
     def on_press_shift(self, event):
         """ This function presents the key press options for the mode>
@@ -1062,13 +1121,13 @@ class SpecOneDGui(QMainWindow):
             self.in_dict['spec_list'][self.act].z = velocity_to_z(self.shift)
             self.vshift_val.setText("{0:.2f}".format(self.shift))
             self.statusBar().showMessage("velocity shift=%d km/s; dshift=%d km/s" % (self.shift, self.dshift), 2000)
-            self.shift_redraw()
+            self.redraw()
         elif event.key=="d":
             self.shift += self.dshift
             self.in_dict['spec_list'][self.act].z = velocity_to_z(self.shift)
             self.vshift_val.setText("{0:.2f}".format(self.shift))
             self.statusBar().showMessage("velocity shift=%d km/s; dshift=%d km/s" % (self.shift, self.dshift), 2000)
-            self.shift_redraw()
+            self.redraw()
         elif event.key=="+":
             self.dshift +=5
             self.dvshift_val.setText("{0:.2f}".format(self.dshift))
@@ -1081,28 +1140,20 @@ class SpecOneDGui(QMainWindow):
             self.yshift += 250
             self.yshift_val.setText("{0:.2f}".format(self.yshift))
             self.in_dict['spec_list'][self.act].yshift = self.yshift
-            self.shift_redraw()
+            self.redraw()
         elif event.key=="s":
             self.yshift -= 250
             self.yshift_val.setText("{0:.2f}".format(self.yshift))
             self.in_dict['spec_list'][self.act].yshift = self.yshift
-            self.shift_redraw()
+            self.redraw()
         elif event.key == "q":
             self.in_dict['spec_list'][self.act].yshift = 0
-            self.shift_redraw()
+            self.redraw()
             self.specplotcanvas.mpl_disconnect(self.cid)
             self.remove_last_layout(self.hbox)
             self.gcid = self.specplotcanvas.mpl_connect('key_press_event', self.on_press_simple)
             self.statusBar().showMessage("Spectral velocity shift is : %d km/s -> General Mode" % (self.shift), 5000)
 
-    def shift_redraw(self):
-        """ Redraw function for the "Shift dispersion" mode
-
-        """
-
-        self.specplotcanvas.plot(self.in_dict, self.act)
-        if self.mode == "divide" or self.mode == "multiply":
-            self.resultcanvas.result_plot(self.in_dict, self.mode)
 
 
 # ------------------------------------------------------------------------------
@@ -1146,6 +1197,8 @@ class SpecOneDGui(QMainWindow):
         self.masklo_val.setText("{0:.2f}".format(self.mx1))
         self.maskhi_val.setText("{0:.2f}".format(self.mx2))
 
+        self.set_canvas_active()
+
 
     def on_press_masking(self, event):
         """ This function presents the key press options for the masking
@@ -1173,7 +1226,7 @@ class SpecOneDGui(QMainWindow):
             self.mask_all()
         elif event.key == "r":
             self.in_dict['spec_list'][self.act].reset_mask()
-            self.specplotcanvas.plot(self.in_dict, self.act)
+            self.redraw()
         elif event.key == "R":
             self.reset_all()
         elif event.key == "q":
@@ -1196,9 +1249,7 @@ class SpecOneDGui(QMainWindow):
         up_index = np.argmin(np.abs(spec.dispersion - mask_between[1]))
         self.in_dict['spec_list'][self.act].mask[lo_index:up_index] = False
 
-        self.specplotcanvas.plot(self.in_dict, self.act)
-        if self.mode == "divide" or self.mode == "multiply":
-            self.resultcanvas.result_plot(self.in_dict, self.mode)
+        self.redraw()
 
 
     def mask_all(self):
@@ -1215,9 +1266,7 @@ class SpecOneDGui(QMainWindow):
             up_index = np.argmin(np.abs(spec.dispersion - mask_between[1]))
             spec.mask[lo_index:up_index] = False
 
-        self.specplotcanvas.plot(self.in_dict, self.act)
-        if self.mode == "divide" or self.mode == "multiply":
-            self.resultcanvas.result_plot(self.in_dict, self.mode)
+        self.redraw()
 
     def reset_all(self):
         """ This function resets the masks of all input spectra.
@@ -1227,7 +1276,7 @@ class SpecOneDGui(QMainWindow):
         for spec in self.in_dict['spec_list']:
             spec.reset_mask()
 
-        self.specplotcanvas.plot(self.in_dict, self.act)
+        self.redraw()
 
 
 # ------------------------------------------------------------------------------
@@ -1266,7 +1315,19 @@ class SpecOneDGui(QMainWindow):
         self.clip_flux_chbox = QCheckBox("Clip Flux",self)
         self.clip_flux_chbox.stateChanged.connect(self.clickBox)
 
+        self.fitlo_lbl = QLabel("Lower fit bound:")
+        self.fitlo_val = QLabel("{0:.2f}".format(self.fx1))
+        self.fithi_lbl = QLabel("Upper fit bound:")
+        self.fithi_val = QLabel("{0:.2f}".format(self.fx2))
+
+        self.fitlo_in = QLineEdit("{0:.2f}".format(self.fx1))
+        self.fitlo_in.setMaxLength(7)
+
+        self.fithi_in = QLineEdit("{0:.2f}".format(self.fx2))
+        self.fithi_in.setMaxLength(7)
+
         self.hbox = QHBoxLayout()
+        self.hbox2 = QHBoxLayout()
 
         for w in [self.contfit_lbl,
                   self.fitfunc_lbl,
@@ -1286,12 +1347,25 @@ class SpecOneDGui(QMainWindow):
             self.hbox.addWidget(w)
             self.hbox.setAlignment(w, QtCore.Qt.AlignVCenter)
 
+        for w in [self.fitlo_lbl,
+                   self.fitlo_val,
+                   self.fitlo_in,
+                   self.fithi_lbl,
+                   self.fithi_val,
+                   self.fithi_in]:
+
+            self.hbox2.addWidget(w)
+            self.hbox2.setAlignment(w, QtCore.Qt.AlignVCenter)
+
         self.layout.addLayout(self.hbox)
+        self.layout.addLayout(self.hbox2)
 
         self.fitfunc_in.returnPressed.connect(self.upd_fitting_values)
         self.order_in.returnPressed.connect(self.upd_fitting_values)
         self.clip_sig_in.returnPressed.connect(self.upd_fitting_values)
         self.clip_bsize_in.returnPressed.connect(self.upd_fitting_values)
+        self.fitlo_in.returnPressed.connect(self.upd_fitting_values)
+        self.fithi_in.returnPressed.connect(self.upd_fitting_values)
 
     def clickBox(self,state):
         """ This function updates the fit_flux boolean whenever the QCheckBox
@@ -1319,8 +1393,12 @@ class SpecOneDGui(QMainWindow):
         self.clip_bsize = int(self.clip_bsize_in.text())
         self.clip_bsize_val.setText("{:d}".format(self.clip_bsize))
 
-        self.fit_continuum()
+        self.fx1 = float(self.fitlo_in.text())
+        self.fx2 = float(self.fithi_in.text())
+        self.fitlo_val.setText("{0:.2f}".format(self.fx1))
+        self.fithi_val.setText("{0:.2f}".format(self.fx2))
 
+        self.set_canvas_active()
 
     def on_press_fitting(self, event):
         """ This function presents the key press options for the masking
@@ -1332,22 +1410,38 @@ class SpecOneDGui(QMainWindow):
             Key press event to evaluate
         """
 
-        if event.key == "c":
-            self.fit_continuum()
-            self.statusBar().showMessage("Fitting Continuum", 2000)
-            self.specplotcanvas.plot(self.in_dict, self.act)
+        if event.key == "s":
+            self.fit_spectrum()
+            self.redraw()
+        elif event.key == "A":
+            self.fx1 = event.xdata
+            self.fitlo_val.setText("{0:.2f}".format(self.fx1))
+            self.fitlo_in.setText("{0:.2f}".format(self.fx1))
+            self.statusBar().showMessage("Setting x1 to %d" % (event.xdata), 2000)
+        elif event.key == "D":
+            self.fx2 = event.xdata
+            self.fithi_val.setText("{0:.2f}".format(self.fx2))
+            self.fithi_in.setText("{0:.2f}".format(self.fx2))
+            self.statusBar().showMessage("Setting x2 to %d" % (event.xdata), 2000)
+        elif event.key == "r":
+            self.fit_region()
+            self.redraw()
 
+        elif event.key == "o":
+            self.overwrite_spectrum_with_fit()
         elif event.key == "q":
             self.specplotcanvas.mpl_disconnect(self.cid)
+            self.remove_last_layout(self.hbox2)
             self.remove_last_layout(self.hbox)
             self.gcid = self.specplotcanvas.mpl_connect('key_press_event', self.on_press_simple)
             self.statusBar().showMessage("General Mode", 5000)
 
-    def fit_continuum(self):
-        """ This function fits the specified polynomial to the active spectrum.
+    def fit_spectrum(self):
+        """ This function fits the specified polynomial to the full active
+        spectrum.
 
         """
-
+        self.statusBar().showMessage("Fitting a polynomial to the full activate spectrum", 2000)
 
         if self.clip_flux:
             spec = self.in_dict['spec_list'][self.act].sigmaclip_flux(low=self.clip_sig, up=self.clip_sig, binsize=self.clip_bsize, niter=5)
@@ -1361,12 +1455,72 @@ class SpecOneDGui(QMainWindow):
         self.in_dict['spec_list'][self.act].fit_dispersion = spec.fit_dispersion
         self.in_dict['spec_list'][self.act].mask = spec.mask
 
-        self.specplotcanvas.plot(self.in_dict, self.act)
+
+
+    # def fit_masked(self):
+    #     """ This function fits the specified polynomial to the active spectrum,
+    #     but only evaluates the fitted polynomial in the masked regions.
+    #
+    #     """
+    #
+    #
+    #     if self.clip_flux:
+    #         spec = self.in_dict['spec_list'][self.act].sigmaclip_flux(low=self.clip_sig, up=self.clip_sig, binsize=self.clip_bsize, niter=5)
+    #
+    #     else:
+    #         spec = self.in_dict['spec_list'][self.act].copy()
+    #
+    #     spec.fit_polynomial(func=self.fit_func, order=self.order, inplace=True)
+    #
+    #     self.in_dict['spec_list'][self.act].fit_flux = spec.fit_flux
+    #     self.in_dict['spec_list'][self.act].fit_dispersion = spec.fit_dispersion
+    #     self.in_dict['spec_list'][self.act].mask = spec.mask
+    #
+    #     self.specplotcanvas.plot(self.in_dict, self.act)
+
+
 
     def fit_region(self):
-        pass
+        """ This functions fits a polynomial to a specified region in the
+        active spectrum.
 
-    def replace_spectrum_with_fit(self):
+        """
+        self.statusBar().showMessage("Fitting a polynomial to the region between %d and %d" % (self.fx1, self.fx2), 2000)
+
+        fit_between = np.sort(np.array([self.fx1, self.fx2]))
+
+        spec = self.in_dict['spec_list'][self.act]
+        temp_spec = spec.copy()
+
+        lo_index = np.argmin(np.abs(spec.dispersion - fit_between[0]))
+        up_index = np.argmin(np.abs(spec.dispersion - fit_between[1]))
+
+        temp_spec = spec.trim_dispersion([lo_index,up_index], mode='pix')
+
+        temp_spec.fit_polynomial(func=self.fit_func, order=self.order, inplace=True)
+
+        spec.fit_dispersion = temp_spec.fit_dispersion
+        spec.fit_flux = temp_spec.fit_flux
+
+
+    def overwrite_spectrum_with_fit(self):
+        """ Overwrites the flux values in the active spectrum with the fitted
+        flux in the fit region, this can be the full spectral range.
+
+        """
+
+
+
+        spec = self.in_dict['spec_list'][self.act]
+
+        lo_index = np.argmin(np.abs(spec.dispersion - spec.fit_dispersion[0]))
+        up_index = np.argmin(np.abs(spec.dispersion - spec.fit_dispersion[-1]))
+
+        spec.flux[lo_index:up_index+1] = spec.fit_flux
+        spec.mask[lo_index:up_index+1] = True
+
+        self.redraw()
+
         pass
 
     def save_fit_to_file(self):
@@ -1453,13 +1607,15 @@ def example():
     science = SpecOneD()
     telluric = SpecOneD()
     telluric_model = SpecOneD()
+    divided = SpecOneD()
 
-    science.read_from_fits('J034151_L1_combined.fits')
-    telluric.read_from_fits('HD24000_L1_combined.fits')
+    science.read_from_fits('J034151_L2_combined.fits')
+    telluric.read_from_fits('HD24000_L2_combined.fits')
     telluric_model.read_from_fits('uka0v.fits')
+    divided.read_from_fits('divided_L2.fits')
 
     app = QtWidgets.QApplication(sys.argv)
-    form = SpecOneDGui(spec_list=[science,telluric], mode="divide")
+    form = SpecOneDGui(spec_list=[science, divided], mode="divide")
     form.show()
     app.exec_()
 

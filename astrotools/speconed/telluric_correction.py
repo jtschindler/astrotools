@@ -4,8 +4,10 @@ from numpy import sqrt, pi, exp
 import matplotlib.pyplot as plt
 
 from lmfit import Model
-
+import sys
 import speconed as sod
+
+import interactive as inter
 
 import scipy.constants as const
 
@@ -20,37 +22,52 @@ def planck_function_wav(wav,T):
     return  2*const.h*const.c**2 / (wav_m**5 * (np.exp(const.h*const.c / (wav_m*const.k*T)) - 1)) * 1e+7 / 1e+20
 
 
+inlist = {'science':'J034151_L1_combined.fits',
+          'tellstar':'HD24000_L1_combined.fits',
+          'tellstarmodel':'uka0v.fits',
+          'tellcorr_name':'tellcorr_L1_2.fits'}
 
 
-science_spectrum = sod.SpecOneD()
-science_spectrum.read_from_fits('Q1652_comb_trimmed.fits')
-telluric_spectrum = sod.SpecOneD()
-telluric_spectrum.read_from_fits('HD287515_comb_trimmed.fits')
-
-# uka0 = np.genfromtxt('uka0v.dat')
-
-uka0 = np.genfromtxt('/home/jt/Downloads/vegallpr25.2000')
-
-wav = np.arange (10000,25000)
-planck = planck_function_wav(wav,9700)
+def telluric_correction(inlist, interactive=True):
 
 
+    # Read in spectra
 
-telluric_model = sod.SpecOneD(dispersion=uka0[:,0], flux=uka0[:,1])
+    science = sod.SpecOneD()
+    science.read_from_fits(inlist['science'])
 
-tell_min = telluric_spectrum.dispersion.min()
-tell_max = telluric_spectrum.dispersion.max()
+    tellstar = sod.SpecOneD()
+    tellstar.read_from_fits(inlist['tellstar'])
 
-telluric_model.trim_disperion(lo_limit=tell_min, up_limit=tell_max, mode='wav')
+    tellstarmodel = sod.SpecOneD()
+    tellstarmodel.read_from_fits(inlist['tellstarmodel'])
 
-telluric_model.flux = telluric_spectrum.flux.mean () / telluric_model.flux.mean() * telluric_model.flux
+    # Deredden science and telluric spectrum
 
-# plt.plot(wav,planck+60000)
-plt.plot(telluric_spectrum.dispersion, telluric_spectrum.flux)
-plt.plot(telluric_model.dispersion, telluric_model.flux+20000)
-plt.plot(science_spectrum.dispersion, science_spectrum.flux)
+    science.deredden(0.4528, 3.1, extinction_law='fm07', inplace=True)
 
-plt.show()
+    tellstar.deredden(0.7460, 3.1, extinction_law='fm07', inplace=True)
+
+
+    # 1) Build telluric
+
+    if interactive:
+        app = inter.QtWidgets.QApplication(sys.argv)
+        form = inter.SpecOneDGui(spec_list=[tellstar, tellstarmodel], mode="divide")
+        form.show()
+        app.exec_()
+
+    # Read in telluric correction
+    tellcorr = sod.SpecOneD()
+    tellcorr.read_from_fits(inlist['tellcorr_name'])
+
+    if interactive:
+        app = inter.QtWidgets.QApplication(sys.argv)
+        form = inter.SpecOneDGui(spec_list=[science, tellcorr, tellstar], mode="divide")
+        form.show()
+        app.exec_()
+
+telluric_correction(inlist)
 
 # References Vacca et al. 2003, Maiolino et al. 1996
 # model spectrum needs to be shifted, scaled and reddened; altering depth of H lines, and resampling to wavelength scale

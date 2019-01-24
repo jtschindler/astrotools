@@ -91,7 +91,7 @@ class SpecOneD(object):
 
     """
 
-    def __init__(self, dispersion=None, flux=None, flux_err=None, header=None, unit=None, mask=None):
+    def __init__(self, dispersion=None, flux=None, flux_err=None, header=None, unit=None, mask=None, raw_dispersion=None, raw_flux=None, raw_flux_err=None):
         """The __init__ method for the SpecOneD class
 
         Parameters
@@ -231,7 +231,7 @@ class SpecOneD(object):
 
         self.header = hdu[0].header
 
-    def save_to_fits(self, filename, overwrite = False):
+    def save_to_fits(self, filename, comment=None, overwrite = False):
         """Save a SpecOneD spectrum to a fits file.
 
         Note: This save function does not store flux_errors, masks, fits etc. Only the original header, the dispersion (via the header), and the flux
@@ -262,12 +262,17 @@ class SpecOneD(object):
         hdu.header['CDELT1'] = cd
         hdu.header['CRPIX1'] = crpix
 
+        hdu.header['HISTORY'] = '1D spectrum generated with SpecOneD'
+
+        if comment:
+            hdu.header['HISTORY'] = comment
+
         hdul = fits.HDUList([hdu])
 
         try:
             hdul.writeto(filename, overwrite = overwrite)
         except:
-            raise ValueError("Filen with the same name already exists and overwrite is False")
+            raise ValueError("Spectrum could not be saved. Maybe a file with the same name already exists and overwrite is False")
 
     def reset_mask(self):
         """Reset the spectrum mask by repopulating it with a 1D array of
@@ -277,8 +282,8 @@ class SpecOneD(object):
         self.mask = np.ones(self.dispersion.shape, dtype=bool)
 
     def copy(self):
-        """Create a new SpecOneD instance populates it with the values
-        from the active spectrum and returns it.
+        """Create a new SpecOneD instance, populate it with the values
+        from the active spectrum and return it.
 
 
         Returns
@@ -292,7 +297,11 @@ class SpecOneD(object):
                         flux_err=self.flux_err,
                         header=self.header,
                         unit=self.unit,
-                        mask=self.mask)
+                        mask=self.mask,
+                        raw_dispersion=self.raw_dispersion,
+                        raw_flux=self.raw_flux,
+                        raw_flux_err=self.raw_flux_err,
+                        )
 
     def override_raw(self):
         """ Override the raw_dispersion, raw_flux and raw_flux_err
@@ -453,7 +462,7 @@ class SpecOneD(object):
         spectrum will be interpolated on the secondary spectrum resolution, but
         this happens only if 'force==True' and 'match_secondary==False'.
         If there is partial overlap between the spectra and 'force==True'
-        the secondary spectrum will be linearly interpolated to match the
+        the secondary spectrum will be interpolated to match the
         dispersion values of the primary spectrum.
         If there is no overlap a ValueError will be raised.
 
@@ -1060,18 +1069,33 @@ class SpecOneD(object):
 
             return spec
 
-    def renormalize_by_spectrum(self, spectrum, dispersion_limits=None, trim_mode='wav', inplace=False):
+    def renormalize_by_spectrum(self, spectrum, dispersion='match', trim_mode='wav', inplace=False):
+
+
+        """ Match the flux of the active spectrum to the "spectrum" given to
+        the function.
+
+        Note:
+        Both spectra will be copied to dummy variables:
+        spec = active spectrum
+        spec2 = supplied spectrum
+        """
 
         spec = self.copy()
         spec2 = spectrum.copy()
 
-        if dispersion_limits is not None:
-            spec.trim_dispersion(dispersion_limits, mode=trim_mode,inplace=True)
-            spec2.trim_dispersion(dispersion_limits, mode=trim_mode,inplace=True)
 
-        # check if spectra have same dispersion, if not force them?
-        # original spectrum will be trimmed to given spectrum only for the flux conversion
-        # allow to use subset of spectrum
+
+        if dispersion == "match":
+            spec.match_dispersions(spec2, match_secondary=False,
+                                  force=True, interp_kind='linear')
+        elif isinstance(dispersion,(list,)):
+            spec.trim_dispersion(dispersion, mode=trim_mode,inplace=True)
+            spec2.trim_dispersion(dispersion, mode=trim_mode,inplace=True)
+        else :
+            print("Spectra will be normalized but dispersion ranges do not necessarily match!")
+
+
 
         average_self_flux = np.trapz(spec.flux, spec.dispersion)
 
