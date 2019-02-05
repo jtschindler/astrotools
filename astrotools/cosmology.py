@@ -109,7 +109,7 @@ class Cosmology:
         return 4. * pi * D_H * ( 1. + z )**2 * D_A**2 / E_z
 
 
-    def integrated_comoving_colume(self, z_min, z_max):
+    def integrated_comoving_volume(self, z_min, z_max):
 
         return integrate.quad(self.comoving_volume_integrand, z_min, z_max)[0]
 

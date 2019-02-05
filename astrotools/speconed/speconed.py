@@ -196,11 +196,16 @@ class SpecOneD(object):
         try:
             hdu = fits.open(filename)
         except:
-            raise ValueError("Filename not found")
+            raise ValueError("Filename not found", str(filename))
 
         # Read in header information
         crval = hdu[0].header['CRVAL1']
-        cd = hdu[0].header['CD1_1']
+        try:
+            cd = hdu[0].header['CD1_1']
+        except:
+            print ("CD1_1 keyword not found, using CDELT1")
+            cd = hdu[0].header['CDELT1']
+
         crpix = hdu[0].header['CRPIX1']
         naxis = hdu[0].header['NAXIS1']
 
@@ -560,7 +565,7 @@ class SpecOneD(object):
 
         new_flux = self.flux + secondary_spectrum.flux
 
-        if self.flux_err:
+        if isinstance(self.flux_err, np.ndarray) and isinstance(secondary_spectrum.flux_err, np.ndarray):
             new_flux_err = np.sqrt(self.flux_err**2 + secondary_spectrum.flux_err**2)
         else:
             new_flux_err = None
@@ -628,7 +633,7 @@ class SpecOneD(object):
 
         new_flux = self.flux - secondary_spectrum.flux
 
-        if self.flux_err:
+        if isinstance(self.flux_err, np.ndarray) and isinstance(secondary_spectrum.flux_err, np.ndarray):
             new_flux_err = np.sqrt(self.flux_err**2 + secondary_spectrum.flux_err**2)
         else:
             new_flux_err = None
@@ -695,8 +700,8 @@ class SpecOneD(object):
 
         new_flux = self.flux / secondary_spectrum.flux
 
-        if self.flux_err:
-            new_flux_err = np.sqrt( (self.flux_err/ secondary_spectrum.flux)**2  + (new_flux/secondary_spectrum.flux*secondary_spectrum.flux_err)**2 )
+        if isinstance(self.flux_err, np.ndarray) and isinstance(secondary_spectrum.flux_err, np.ndarray):
+                new_flux_err = np.sqrt( (self.flux_err/ secondary_spectrum.flux)**2  + (new_flux/secondary_spectrum.flux*secondary_spectrum.flux_err)**2 )
         else:
             new_flux_err = None
 
@@ -760,7 +765,7 @@ class SpecOneD(object):
 
         new_flux = self.flux * secondary_spectrum.flux
 
-        if self.flux_err:
+        if isinstance(self.flux_err, np.ndarray) and isinstance(secondary_spectrum.flux_err, np.ndarray):
             new_flux_err = np.sqrt(secondary_spectrum.flux**2 * self.flux_err**2 + self.flux**2 * secondary_spectrum.flux_err**2)
         else:
             new_flux_err = None
@@ -852,7 +857,7 @@ class SpecOneD(object):
                 print (self.dispersion[0], limits[0])
                 print("WARNING: Lower limit is below the lowest dispersion value. The lower limit is set to the minimum dispersion value.")
             if limits[1] > self.dispersion[-1]:
-                print("WARNING: Upper limit is below the highest dispersion value. The upper limit is set to the maximum dispersion value.")
+                print("WARNING: Upper limit is above the highest dispersion value. The upper limit is set to the maximum dispersion value.")
 
 
 
@@ -861,7 +866,7 @@ class SpecOneD(object):
             if limits[0] < self.dispersion[0]:
                 print("WARNING: Lower limit is below the lowest dispersion value. The lower limit is set to the minimum dispersion value.")
             if limits[1] > self.dispersion[-1]:
-                print("WARNING: Upper limit is below the highest dispersion value. The upper limit is set to the maximum dispersion value.")
+                print("WARNING: Upper limit is above the highest dispersion value. The upper limit is set to the maximum dispersion value.")
 
             lo_index = limits[0]
             up_index = limits[1]
@@ -903,7 +908,7 @@ class SpecOneD(object):
 
         if fill_value=='extrapolate':
             f = sp.interpolate.interp1d(self.dispersion, self.flux, kind=kind, fill_value='extrapolate')
-            if self.flux_err :
+            if isinstance(self.flux_err, np.ndarray):
                 f_err = sp.interpolate.interp1d(self.dispersion, self.flux_err, kind=kind, fill_value='extrapolate')
             print ('Warning: Values outside the original dispersion range will be extrapolated!')
         elif fill_value == 'const':
@@ -912,20 +917,20 @@ class SpecOneD(object):
             f = sp.interpolate.interp1d(self.dispersion, self.flux, kind=kind,
                                         bounds_error= False,
                                         fill_value=(fill_lo, fill_hi))
-            if self.flux_err:
+            if isinstance(self.flux_err, np.ndarray):
                 fill_lo_err = np.median(self.flux_err[0:10])
                 fill_hi_err = np.median(self.flux_err[-11:-1])
                 f_err = sp.interpolate.interp1d(self.dispersion, self.flux_err, kind=kind, bounds_error= False,
                                         fill_value=(fill_lo_err, fill_hi_err))
         else:
             f = sp.interpolate.interp1d(self.dispersion, self.flux, kind=kind)
-            if self.flux_err:
+            if isinstance(self.flux_err, np.ndarray):
                 f_err = sp.interpolate.interp1d(self.dispersion, self.flux_err, kind=kind)
 
         self.dispersion = new_dispersion
         self.reset_mask()
         self.flux = f(self.dispersion)
-        if self.flux_err:
+        if isinstance(self.flux_err, np.ndarray):
             self.flux_err = f_err(self.dispersion)
 
     def smooth(self, width, kernel="boxcar", inplace=False):
@@ -1059,11 +1064,13 @@ class SpecOneD(object):
 
         if inplace:
             self.to_frequency
+            self.flux_scale_factor = 10**(-0.4*dmag)
             self.flux = self.flux * 10**(-0.4*dmag)
             self.to_wavelength
         else:
             spec = self.copy()
             spec.to_frequency
+            spec.flux_scale_factor = 10**(-0.4*dmag)
             spec.flux = spec.flux * 10**(-0.4*dmag)
             spec.to_wavelength
 
@@ -1104,9 +1111,11 @@ class SpecOneD(object):
         self.scale = (average_spec_flux/average_self_flux)
 
         if inplace:
+            self.flux_scale_factor = average_spec_flux/average_self_flux
             self.flux = self.flux * (average_spec_flux/average_self_flux)
         else:
             spec = self.copy()
+            spec.flux_scale_factor = average_spec_flux/average_self_flux
             flux = self.flux * (average_spec_flux/average_self_flux)
             spec.scale = self.scale
             spec.flux = flux
@@ -1207,6 +1216,21 @@ class SpecOneD(object):
 
             return spec
 
+    def mask_between(self, limits, inplace=False):
+
+        lo_index = np.argmin(np.abs(self.dispersion - limits[0]))
+        up_index = np.argmin(np.abs(self.dispersion - limits[1]))
+
+        self.mask[lo_index:up_index] = 0
+
+        if inplace:
+            self.mask[lo_index:up_index] = 0
+        else:
+            spec = self.copy()
+            spec.mask[lo_index:up_index] = 0
+
+            return spec
+
     def resample(self):
         # resamples dispersion axis to a lower resolution while keeping the
         # integrated flux constant
@@ -1252,12 +1276,12 @@ class FlatSpectrum(SpecOneD):
 
 class QuasarSpectrum(SpecOneD):
 
-    def __init(self, dispersion=None, flux=None, flux_err=None, header=None):
+    def __init(self, dispersion=None, flux=None, flux_err=None, header=None,  unit=None, mask=None, raw_dispersion=None, raw_flux=None, raw_flux_err=None):
 
         super(QuasarSpectrum, self).__init__(self, dispersion=dispersion, flux=flux,
                                        flux_err=flux_err, header=header)
 
-    def add_simple_quasar_model(self, redshift_guess=0.0):
+    def add_simple_quasar_model(self, redshift=0.0):
 
         continuum_model = LinearModel(prefix='cont_')
 
@@ -1272,7 +1296,7 @@ class QuasarSpectrum(SpecOneD):
 
         pars.update(lyab_model.make_params())
         pars.update(lyan_model.make_params())
-        lya_wavel = 1216*(redshift_guess+1)
+        lya_wavel = 1216*(redshift+1)
 
         pars['lyab_center'].set(lya_wavel, min=lya_wavel*0.9, max=lya_wavel*1.1)
         pars['lyab_sigma'].set(40)
@@ -1283,32 +1307,33 @@ class QuasarSpectrum(SpecOneD):
         pars['lyan_amplitude'].set(4e-14)
 
         pars.update(nv_model.make_params())
-        nv_wavel = 1240*(redshift_guess+1)
+        nv_wavel = 1240*(redshift+1)
 
         pars['nv_center'].set(nv_wavel, min=nv_wavel*0.9, max=nv_wavel*1.1)
         pars['nv_sigma'].set(2)
         pars['nv_amplitude'].set(1e-14)
 
         pars.update(siv_model.make_params())
-        siv_wavel = 1400*(redshift_guess+1)
+        siv_wavel = 1400*(redshift+1)
 
         pars['siv_center'].set(siv_wavel, min=siv_wavel*0.9, max=siv_wavel*1.1)
         pars['siv_sigma'].set(40)
         pars['siv_amplitude'].set(1e-13)
 
         pars.update(civ_model.make_params())
-        civ_wavel = 1549*(redshift_guess+1)
+        civ_wavel = 1549*(redshift+1)
 
         pars['civ_center'].set(civ_wavel, min=civ_wavel*0.9, max=civ_wavel*1.1)
         pars['civ_sigma'].set(40)
         pars['civ_amplitude'].set(1e-13)
 
         pars.update(ciii_model.make_params())
-        ciii_wavel = 1909*(redshift_guess+1)
+        ciii_wavel = 1909*(redshift+1)
 
         pars['ciii_center'].set(ciii_wavel, min=ciii_wavel*0.9, max=ciii_wavel*1.1)
         pars['ciii_sigma'].set(40)
         pars['ciii_amplitude'].set(1e-13)
+
 
         self.model_spectrum = continuum_model + lyab_model + lyan_model + siv_model + civ_model + ciii_model
         self.model_pars = pars

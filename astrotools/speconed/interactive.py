@@ -1619,4 +1619,14 @@ def example():
     form.show()
     app.exec_()
 
+
+def divide(spec, spec2):
+
+    app = QtWidgets.QApplication(sys.argv)
+    form = SpecOneDGui(spec_list=[spec, spec2], mode="divide")
+    form.show()
+    app.exec_()
+
+
+
 # example()

@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 
 from lmfit import Model
 import sys
-import speconed as sod
+from astrotools.speconed import speconed as sod
 
-import interactive as inter
+from astrotools.speconed import interactive as inter
 
 import scipy.constants as const
 
@@ -24,8 +24,22 @@ def planck_function_wav(wav,T):
 
 inlist = {'science':'J034151_L1_combined.fits',
           'tellstar':'HD24000_L1_combined.fits',
+          'extinction_science':0.4528,
+          'extinction_telluric':0.7460,
+          'R_V':3.1,
+          'extinction_law':'fm07',
           'tellstarmodel':'uka0v.fits',
           'tellcorr_name':'tellcorr_L1_2.fits'}
+
+inlist2 = {'science':'J034151_L2_combined.fits',
+          'tellstar':'HD24000_L2_combined.fits',
+          'extinction_science':0.4528,
+          'extinction_telluric':0.7460,
+          'R_V':3.1,
+          'extinction_law':'fm07',
+          'tellstarmodel':'uka0v.fits',
+          'tellcorr_name':'tellcorr_L2.fits'}
+
 
 
 def telluric_correction(inlist, interactive=True):
@@ -44,9 +58,15 @@ def telluric_correction(inlist, interactive=True):
 
     # Deredden science and telluric spectrum
 
-    science.deredden(0.4528, 3.1, extinction_law='fm07', inplace=True)
+    science.deredden(inlist['extinction_science'],
+                     inlist['R_V'],
+                     extinction_law=inlist['extinction_law'],
+                     inplace=True)
 
-    tellstar.deredden(0.7460, 3.1, extinction_law='fm07', inplace=True)
+    tellstar.deredden(inlist['extinction_telluric'],
+                     inlist['R_V'],
+                     extinction_law=inlist['extinction_law'],
+                     inplace=True)
 
 
     # 1) Build telluric
@@ -63,11 +83,11 @@ def telluric_correction(inlist, interactive=True):
 
     if interactive:
         app = inter.QtWidgets.QApplication(sys.argv)
-        form = inter.SpecOneDGui(spec_list=[science, tellcorr, tellstar], mode="divide")
+        form = inter.SpecOneDGui(spec_list=[science, tellcorr], mode="divide")
         form.show()
         app.exec_()
 
-telluric_correction(inlist)
+# telluric_correction(inlist)
 
 # need to test this
 
