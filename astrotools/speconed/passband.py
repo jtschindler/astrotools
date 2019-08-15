@@ -5,11 +5,11 @@ import numpy as np
 from .speconed import SpecOneD
 from .speconed import datadir
 
-from matplotlib import rc
+
 import matplotlib.pyplot as plt
 
 
-from astropy.constants import c
+from astropy import constants as const
 
 
 class PassBand(SpecOneD):
@@ -26,13 +26,25 @@ class PassBand(SpecOneD):
 
     def load_passband(self, passband_name):
 
-        # available 2MASS-J, 2MASS-H, 2MASS-Ks implement more passbands
 
         passband_data = np.genfromtxt(datadir+'passbands/'+passband_name+'.dat')
-        # passband_data = np.genfromtxt(passband_name+'.dat')
+
+
 
         wavelength = passband_data[:, 0]
         throughput = passband_data[:, 1]
+
+        # Change wavelength to Angstroem for all passbands
+        filter_group = passband_name.split('-')[0]
+
+        if filter_group == "WISE":
+            # micron to Angstroem
+            wavelength = wavelength * 10000.
+
+        elif filter_group == "LSST":
+            # nm to Angstroem
+            wavelength = wavelength * 10.
+
 
         self.dispersion = wavelength
         self.flux = throughput
@@ -51,18 +63,13 @@ class PassBand(SpecOneD):
         self.model_spectrum = None
         self.fit_output = None
 
-        # try:
-        #     throughput_uncertainty = passband_data[:, 2]
-        #     self.flux_error = throughput_uncertainty
-        # except ValueError:
-        #     print ("Warning: No throughput uncertainty found")
 
     def to_wavelength(self):
 
         if self.unit != 'f_nu':
             raise ValueError('Dispersion must be in frequency (Hz)')
 
-        self.dispersion = (c.value * 1e+10) / self.dispersion
+        self.dispersion = (const.c.value * 1e+10) / self.dispersion
 
         self.flux = np.flip(self.flux, axis=0)
         self.dispersion = np.flip(self.dispersion, axis=0)
@@ -74,7 +81,7 @@ class PassBand(SpecOneD):
         if self.unit != 'f_lam':
             raise ValueError('Dispersion must be in wavelength (Angstroem)')
 
-        self.dispersion = (c.value * 1e+10) / self.dispersion
+        self.dispersion = (const.c.value * 1e+10) / self.dispersion
 
         self.flux = np.flip(self.flux, axis=0)
         self.dispersion = np.flip(self.dispersion, axis=0)

@@ -45,7 +45,7 @@ def fits_to_hdf(filename):
     :return:
     """
     hdu = fits.open(filename)
-    filename = os.path.splitext(filename)
+    filename = os.path.splitext(filename)[0]
     df = pd.DataFrame()
 
     format_list = ['D', 'J']
@@ -86,7 +86,7 @@ def fits_to_hdf(filename):
     print(dtype_dict)
     df.astype(dtype_dict, inplace=True)
 
-    df.to_hdf(filename+'.hdf5', 'data')
+    df.to_hdf(filename+'.hdf5', 'data', format='table')
 
 
 def match_catalogs(match_radius, primary_cat, p_ra_col, p_dec_col, \
@@ -118,6 +118,7 @@ def match_catalogs(match_radius, primary_cat, p_ra_col, p_dec_col, \
                 " columns of the Secondary catalog will be added")
 
 
+
     coo_p = SkyCoord(primary_cat[p_ra_col].values*u.deg, \
             primary_cat[p_dec_col].values*u.deg)
 
@@ -125,6 +126,7 @@ def match_catalogs(match_radius, primary_cat, p_ra_col, p_dec_col, \
             secondary_cat[s_dec_col].values*u.deg)
 
     idx_s, distance_s, d3d = coo_p.match_to_catalog_sky(coo_s)
+
 
     primary_cat['index_to_match'] = idx_s
     primary_cat[s_column_prefix+'distance'] = distance_s
@@ -234,19 +236,19 @@ def match_catalogs(match_radius, primary_cat, p_ra_col, p_dec_col, \
 
 
 
-def add_extinction_values(df):
-
-    coords = SkyCoord(catalog['ps_ra'].values*u.deg, catalog['ps_dec'].values*u.deg)
-
-    sfd = SFDQuery()
-
-    ebv = sfd(coords)
-
-
-    catalog['EBV'] = ebv
-
-
-    return catalog
+# def add_extinction_values(df):
+#
+#     coords = SkyCoord(catalog['ps_ra'].values*u.deg, catalog['ps_dec'].values*u.deg)
+#
+#     sfd = SFDQuery()
+#
+#     ebv = sfd(coords)
+#
+#
+#     catalog['EBV'] = ebv
+#
+#
+#     return catalog
 
 
 def build_adjacent_flux_ratios(df, flux_names):

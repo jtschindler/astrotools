@@ -26,6 +26,19 @@ def decdeg2dms_short(dd):
     return '{0:+03.0f}:{1:02.0f}:{2:02.0f}'.format(degrees, minutes, seconds)
 
 
+def decdeg2dms_nvss(dd):
+    is_positive = dd >= 0
+    dd = abs(dd)
+    minutes, seconds = divmod(dd*3600, 60)
+    degrees, minutes = divmod(minutes, 60)
+    degrees = degrees if is_positive else -degrees
+    return '{0:+03.0f} {1:02.0f} {2:05.2f}'.format(degrees, minutes, seconds)
+
+def decra2hms_nvss(dra):
+    minutes, seconds = divmod(dra/15*3600, 60)
+    hours, minutes = divmod(minutes, 60)
+    return '{0:02g} {1:02g} {2:05.2f}'.format(hours, minutes, seconds)
+
 def hmsra2decdeg(ra_hms,delimiter=':'):
 
     if delimiter is None:

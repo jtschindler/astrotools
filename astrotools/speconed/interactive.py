@@ -187,8 +187,7 @@ class SpecPlotCanvas(FigureCanvas):
 
         # Setting up the active spectrum
         spec_prime = in_dict['spec_list'][active]
-        # spec_prime.z = in_dict['spec_list'][active].z
-        # spec_prime.yshift = in_dict['spec_list'][active].yshift
+
         mask_prime = spec_prime.mask
 
 
@@ -199,6 +198,7 @@ class SpecPlotCanvas(FigureCanvas):
         self.ax.plot(spec_prime.redshift(spec_prime.z).dispersion[mask_prime],
                      spec_prime.flux[mask_prime]+spec_prime.yshift,
                      'r', linewidth=2)
+
 
         if spec_prime.fit_flux is not None:
 
@@ -297,6 +297,11 @@ class ResultCanvas(FigureCanvas):
 
         self.ax.plot(self.result_spec.dispersion[self.result_spec.mask],
                      self.result_spec.flux[self.result_spec.mask], 'k', lw=1.5)
+
+        # print (self.result_spec.flux_err)
+        # self.ax.plot(self.result_spec.dispersion[self.result_spec.mask],
+        #              self.result_spec.flux_err[self.result_spec.mask], 'grey',
+                     # lw=1.5)
 
         # Setting the plot boundaries
         x2_lo = in_dict['x2_lo']
@@ -1173,7 +1178,7 @@ class SpecOneDGui(QMainWindow):
         self.masklo_in = QLineEdit("{0:.2f}".format(self.mx1))
         self.masklo_in.setMaxLength(7)
 
-        self.maskhi_in = QLineEdit("{0:.2f}".format(self.mx1))
+        self.maskhi_in = QLineEdit("{0:.2f}".format(self.mx2))
         self.maskhi_in.setMaxLength(7)
 
         self.hbox = QHBoxLayout()

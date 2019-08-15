@@ -55,6 +55,9 @@ def telluric_correction(inlist, interactive=True):
 
     tellstarmodel = sod.SpecOneD()
     tellstarmodel.read_from_fits(inlist['tellstarmodel'])
+    tellstarmodel.flux_err = np.zeros(len(tellstarmodel.dispersion))
+
+    print (tellstar.flux_err, tellstarmodel.flux_err, science.flux_err)
 
     # Deredden science and telluric spectrum
 

@@ -53,7 +53,7 @@ class Cosmology:
 
     def k_correction(self,z,a_nu):
         # Hogg 1999, eq. 27
-        return -2.5 * ( 1 - a_nu ) *  np.log10(1.+z)
+        return -2.5 * ( 1 + a_nu ) *  np.log10(1.+z)
 
     #---------------------------------------------------------------------------
     # Distances and Volume
@@ -114,8 +114,6 @@ class Cosmology:
         return integrate.quad(self.comoving_volume_integrand, z_min, z_max)[0]
 
 
-
-
     def luminosity_distance(self, z):
         #luminosity distance to redshift z in h^-1 Mpc
 
@@ -126,6 +124,33 @@ class Cosmology:
         #angular distance to redshift z in h^-1 Mpc
 
         return self.comoving_distance(0,z)/(1.+z)
+
+
+    #---------------------------------------------------------------------------
+    # 3D distances between two sources
+    #---------------------------------------------------------------------------
+
+    def distance_3d(self, z1, z2, theta):
+        """ Calculate the 3D distance between two sources with redshifts z1, z2
+        and angle theta"""
+
+        # see Liske 2000, eqs. 3-7
+        # this code only holds for a flat cosmology
+
+        # comoving distances
+        r1 = self.comoving_distance(0,z1)
+        r2 = self.comoving_distance(0,z2)
+
+        A = ( (r2+r1) / 2. )**2 * np.sin(np.deg2rad(theta / 2.))**2
+
+        B = ( (r2-r1) / 2. )**2 * np.cos(np.deg2rad(theta / 2.))**2
+
+        r2_prime = np.sqrt(A + B) * 2
+
+        # proper distance in h^-1 Mpc
+        return ( 1. / (1. + z1) ) * r2_prime
+
+
 
     #---------------------------------------------------------------------------
     # Times and Ages

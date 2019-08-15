@@ -1,5 +1,6 @@
 import numpy as np
 
+import astropy.units as units
 
 def flux_to_ab(flux, unit='Jy'):
 
@@ -93,7 +94,12 @@ def vega_to_ab(mag, band_name, output_flux=False, asinh_mag=False, flux_unit='Jy
                      'PS_r': 0.0,
                      'PS_i': 0.0,
                      'PS_z': 0.0,
-                     'PS_y': 0.0
+                     'PS_y': 0.0,
+                     'VHS_Z': 0.502,
+                     'VHS_Y': 0.600,
+                     'VHS_J': 0.916,
+                     'VHS_H': 1.366,
+                     'VHS_K': 1.827
                      }
 
     if output_flux:
