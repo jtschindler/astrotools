@@ -328,6 +328,44 @@ class SpecOneD(object):
         df.to_hdf(filename,'data')
 
 
+    def save_to_csv(self, filename, format='linetools'):
+
+        data = [self.dispersion, self.dispersion]
+
+        if self.flux_err is not None:
+            data.append(self.flux_err)
+
+
+        if hasattr(self,'telluric'):
+            data.append(self.telluric)
+        if hasattr(self,'obj_model'):
+            data.append(self.obj_model)
+
+        if format=='linetools':
+
+            column_names = ['wave', 'flux']
+            if self.flux_err is not None:
+                column_names.append('error')
+
+        else:
+
+            column_names = ['wavelength', 'flux']
+            if self.flux_err is not None:
+                column_names.append('flux_error')
+
+        if hasattr(self, 'telluric'):
+            column_names.append('telluric')
+        if hasattr(self, 'obj_model'):
+            column_names.append('obj_model')
+
+        df = pd.DataFrame(np.array(data).T, columns=column_names)
+
+
+        df.to_csv(filename, index=False)
+
+
+
+
     def reset_mask(self):
         """Reset the spectrum mask by repopulating it with a 1D array of
         boolean 1 values.

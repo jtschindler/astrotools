@@ -17,6 +17,8 @@ def parse_arguments():
     parser.add_argument('-s', '--smooth', required=False, type=float,
                         help='Number of pixels for a simple boxcar smoothing '
                              'of the spectrum.')
+    parser.add_argument('--save', required=False, type=bool,
+                        help='Save it as a csv file.')
 
     return parser.parse_args()
 
@@ -31,6 +33,12 @@ if __name__ == '__main__':
     try:
         if 'OPT_WAVE' in hdu[1].columns.names:
             spec.read_pypeit_fits(filename=args.filename)
+
+            if args.save:
+                filename = args.filename.split('.')[0]+'.csv'
+                print(filename)
+                spec.save_to_csv(filename,format='linetools')
+
             if args.smooth is not None:
                 spec.smooth(args.smooth, inplace=True)
 
@@ -39,6 +47,11 @@ if __name__ == '__main__':
 
         else:
             spec.read_from_fits(filename=args.filename)
+
+            if args.save:
+                filename = args.filename.split('.')[0]+'.csv'
+                spec.save_to_csv(filename,format='linetools')
+
             if args.smooth is not None:
                 spec.smooth(args.smooth, inplace=True)
 
