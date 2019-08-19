@@ -330,7 +330,7 @@ class SpecOneD(object):
 
     def save_to_csv(self, filename, format='linetools'):
 
-        data = [self.dispersion, self.dispersion]
+        data = [self.dispersion, self.flux]
 
         if self.flux_err is not None:
             data.append(self.flux_err)
