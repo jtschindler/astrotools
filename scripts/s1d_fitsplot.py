@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import argparse
 from astropy.io import fits
 from astrotools.speconed import speconed as sod
@@ -39,7 +40,7 @@ if __name__ == '__main__':
                 spec.read_pypeit_fits(filename=args.filename)
 
                 if args.save:
-                    filename = args.filename.split('.')[0]+'.csv'
+                    filename = os.path.splitext(args.filename)[0] +'.csv'
                     print(filename)
                     spec.save_to_csv(filename,format='linetools')
 
@@ -53,7 +54,7 @@ if __name__ == '__main__':
             spec.read_from_fits(filename=args.filename)
 
             if args.save:
-                filename = args.filename.split('.')[0]+'.csv'
+                filename = os.path.splitext(args.filename)[0] +'.csv'
                 spec.save_to_csv(filename,format='linetools')
 
             if args.smooth is not None:

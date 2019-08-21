@@ -165,8 +165,8 @@ class QLF:
 
     def setup_qlf_PD13(self):
         self.name = "PD2013"
-        self.band = "i" # converted to i-band, see the update function
-        self.band_wavelength = 445 # in nm
+        self.band = "i"  # converted to i-band, see the update function
+        self.band_wavelength = 445  # in nm
         self.type = 0 # 0 = magnitudes, 1 = luminosities
         self.k_correction = - 0.5964 # k-corrects magnitude to z=0
 
