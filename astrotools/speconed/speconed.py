@@ -134,31 +134,31 @@ class SpecOneD(object):
         # disperion units need to be in Angstroem
 
         try:
-            if flux is None:
+            if raw_flux is None:
                 self.raw_flux = flux
             else:
-                self.raw_flux = np.array(flux)
-                if flux.ndim != 1:
-                    raise ValueError("Flux array is not 1D")
+                self.raw_flux = np.array(raw_flux)
         except ValueError:
-            print("Flux could not be converted to 1D ndarray")
+            print("Raw flux could not be converted to 1D ndarray")
 
         try:
-            if dispersion is None:
+            if raw_dispersion is None:
                 self.raw_dispersion = dispersion
             else:
-                self.raw_dispersion = np.array(dispersion)
-                if dispersion.ndim != 1:
-                    raise ValueError("Flux dimension is not 1")
+                self.raw_dispersion = np.array(raw_dispersion)
+                # if dispersion.ndim != 1:
+                #     raise ValueError("Flux dimension is not 1")
         except ValueError:
-            print("Flux could not be converted to 1D ndarray")
+            print("Raw dispersion could not be converted to 1D ndarray")
 
-        self.raw_flux_err = flux_err
+        if raw_flux_err is None:
+            self.raw_flux_err = flux_err
+        else:
+            self.raw_flux_err = np.array(raw_flux_err)
 
-        self.flux = self.raw_flux
-
-        self.flux_err = self.raw_flux_err
-        self.dispersion = self.raw_dispersion
+        self.flux = flux
+        self.flux_err = flux_err
+        self.dispersion = dispersion
 
         if mask is not None:
             self.mask = mask
@@ -204,9 +204,11 @@ class SpecOneD(object):
         self.flux = hdu[exten].data['OPT_FLAM']*1e-17
         self.raw_flux = hdu[exten].data['OPT_FLAM']*1e-17
         self.flux_err = 1./np.sqrt(hdu[exten].data['OPT_FLAM_IVAR'])*1e-17
-        self.raw_flux_err = 1./np.sqrt(hdu[exten].data['OPT_FLAM_IVAR'])*1e-17
+        self.flux_err[self.flux_err == np.inf] = np.NaN
+        self.flux_err[self.flux_err == -np.inf] = np.NaN
+        self.raw_flux_err = self.flux_err
         self.flux_sig = hdu[exten].data['OPT_FLAM_SIG']
-        self.mask = hdu[exten].data['OPT_MASK']
+        self.mask = np.array(hdu[exten].data['OPT_MASK'], dtype=bool)
 
         if 'TELLURIC' in hdu[exten].columns.names:
             self.telluric = hdu[exten].data['TELLURIC']
@@ -373,6 +375,40 @@ class SpecOneD(object):
 
         self.mask = np.ones(self.dispersion.shape, dtype=bool)
 
+
+    def mask_sn(self, signal_to_noise_limit, inplace=False):
+        """
+
+        :param signal_to_noise_limit:
+        :param inplace:
+        :return:
+        """
+
+        mask_index = self.flux / self.flux_err > signal_to_noise_limit
+
+        new_mask = np.zeros(self.dispersion.shape, dtype=bool)
+
+        new_mask[mask_index] = 1
+
+        new_mask = new_mask * np.array(self.mask, dtype=bool)
+
+        if inplace:
+            self.mask = new_mask
+
+        else:
+            return SpecOneD(dispersion=self.dispersion,
+                            flux=self.flux,
+                            flux_err=self.flux_err,
+                            header=self.header,
+                            unit=self.unit,
+                            mask=new_mask,
+                            raw_dispersion=self.raw_dispersion,
+                            raw_flux=self.raw_flux,
+                            raw_flux_err=self.raw_flux_err,
+                            )
+
+
+
     def copy(self):
         """Create a new SpecOneD instance, populate it with the values
         from the active spectrum and return it.
@@ -383,16 +419,28 @@ class SpecOneD(object):
         obj:'SpecOneD'
             Returns an new SpecOneD instance populated by the original spectrum.
         """
+        new_dispersion = self.dispersion.copy()
+        new_flux = self.flux.copy()
+        if self.flux_err is not None:
+            new_flux_err = self.flux_err.copy()
+        else:
+            new_flux_err = None
+        new_header = self.header
+        new_unit = self.unit
+        new_mask = self.mask
+        new_raw_dispersion = self.raw_dispersion
+        new_raw_flux = self.raw_flux
+        new_raw_flux_err = self.raw_flux_err
 
-        return SpecOneD(dispersion=self.dispersion,
-                        flux=self.flux,
-                        flux_err=self.flux_err,
-                        header=self.header,
-                        unit=self.unit,
-                        mask=self.mask,
-                        raw_dispersion=self.raw_dispersion,
-                        raw_flux=self.raw_flux,
-                        raw_flux_err=self.raw_flux_err,
+        return SpecOneD(dispersion=new_dispersion,
+                        flux=new_flux,
+                        flux_err=new_flux_err,
+                        header=new_header,
+                        unit=new_unit,
+                        mask=new_mask,
+                        raw_dispersion=new_raw_dispersion,
+                        raw_flux=new_raw_flux,
+                        raw_flux_err=new_raw_flux_err,
                         )
 
     def override_raw(self):
@@ -406,7 +454,7 @@ class SpecOneD(object):
         self.flux_err = self.raw_flux_err
 
     def restore(self):
-        """ Override the dispersion, flux and rflux_err
+        """ Override the dispersion, flux and flux_err
         variables in the SpecOneD class with the raw_dispersion, raw_flux and
         raw_flux_err values.
         """
@@ -573,7 +621,8 @@ class SpecOneD(object):
             return 'none', np.NaN, np.NaN
 
     def match_dispersions(self, secondary_spectrum, match_secondary=True,
-                          force=False, interp_kind='linear'):
+                          force=False, interp_kind='linear',
+                          method='interpolate'):
         """Match the dispersion of the primary and the supplied secondary
         spectrum.
 
@@ -623,20 +672,37 @@ class SpecOneD(object):
         overlap, s_min, s_max = self.check_dispersion_overlap(secondary_spectrum)
 
         if overlap == 'primary':
-            secondary_spectrum.interpolate(self.dispersion, kind=interp_kind)
+            if method == 'interpolate':
+                secondary_spectrum.interpolate(self.dispersion, kind=interp_kind)
+            elif method == 'resample':
+                secondary_spectrum.resample(self.dispersion, force=force,
+                inplace=True)
+
 
         elif (overlap == 'secondary' and match_secondary is False and force is
         True):
-            self.interpolate(secondary_spectrum.dispersion, kind=interp_kind)
+            if method == 'interpolate':
+                self.interpolate(secondary_spectrum.dispersion, kind=interp_kind)
+            elif method == 'resample':
+                self.resample(secondary_spectrum.dispersion, force=force,
+                              inplace=True)
 
         elif (overlap == 'secondary' and match_secondary is True and force is
         True):
             self.trim_dispersion(limits=[s_min, s_max], mode='wav', inplace=True)
-            secondary_spectrum.interpolate(self.dispersion, kind=interp_kind)
+            if method == 'interpolate':
+                secondary_spectrum.interpolate(self.dispersion, kind=interp_kind)
+            elif method == 'resample':
+                secondary_spectrum.resample(self.dispersion, force=force,
+                                            inplace=True)
 
         elif overlap == 'partial' and force is True:
             self.trim_dispersion(limits=[s_min, s_max], mode='wav', inplace=True)
-            secondary_spectrum.interpolate(self.dispersion, kind=interp_kind)
+            if method == 'interpolate':
+                secondary_spectrum.interpolate(self.dispersion, kind=interp_kind)
+            elif method == 'resample':
+                secondary_spectrum.resample(self.dispersion, force=force,
+                                            inplace=True)
 
         elif force is False and (overlap == 'secondary' or overlap == 'partial'):
             raise ValueError('There is overlap between the spectra but force is False.')
@@ -647,7 +713,7 @@ class SpecOneD(object):
 
 
     def add(self, secondary_spectrum, copy_header='first', force=True,
-            inplace=False, copy_flux_err = 'No'):
+            copy_flux_err = 'No', method='interpolate'):
 
         """Add the flux in the primary and secondary spectra.
 
@@ -684,44 +750,45 @@ class SpecOneD(object):
         # flux error needs to be taken care of
         # needs to be tested
 
-        if not np.array_equal(self.dispersion, secondary_spectrum.dispersion):
+        s_one = self.copy()
+        s_two = secondary_spectrum.copy()
+
+
+        if not np.array_equal(s_one.dispersion, s_two.dispersion):
             print ("Warning: Dispersion does not match.")
             print ("Warning: Flux will be interpolated.")
 
-            self.match_dispersions(secondary_spectrum, force=force)
+            s_one.match_dispersions(s_two, force=force,
+                                   method=method)
 
-        new_flux = self.flux + secondary_spectrum.flux
+        new_flux = s_one.flux + s_two.flux
 
-        if copy_flux_err == 'No' and isinstance(self.flux_err,
+        if copy_flux_err == 'No' and isinstance(s_one.flux_err,
                                                 np.ndarray) and \
-                isinstance(secondary_spectrum.flux_err, np.ndarray):
-            new_flux_err = np.sqrt(self.flux_err**2 + secondary_spectrum.flux_err**2)
+                isinstance(s_two.flux_err, np.ndarray):
+            new_flux_err = np.sqrt(s_one.flux_err**2 + s_two.flux_err**2)
         elif copy_flux_err == 'first':
-            new_flux_err = self.flux_err
+            new_flux_err = s_one.flux_err
         elif copy_flux_err == 'second':
-            new_flux_err = secondary_spectrum.flux_err
+            new_flux_err = s_two.flux_err
         else:
             new_flux_err = None
 
         if copy_header == 'first':
-            new_header = self.header
+            new_header = s_one.header
         elif copy_header == 'last':
-            new_header = secondary_spectrum.header
+            new_header = s_two.header
 
-        if inplace:
-            self.flux = new_flux
-            self.header = new_header
-            self.flux_err = new_flux_err
-        else:
-            return SpecOneD(dispersion=self.dispersion,
-                            flux=new_flux,
-                            flux_err=new_flux_err,
-                            header=new_header,
-                            unit=self.unit,
-                            mask=self.mask)
+
+        return SpecOneD(dispersion=s_one.dispersion,
+                        flux=new_flux,
+                        flux_err=new_flux_err,
+                        header=new_header,
+                        unit=s_one.unit,
+                        mask=s_one.mask)
 
     def subtract(self, secondary_spectrum, copy_header='first', force=True,
-                 inplace=False, copy_flux_err = 'No'):
+                 copy_flux_err = 'No', method='interpolate'):
         """Subtract the flux of the secondary spectrum from the primary
         spectrum.
 
@@ -759,43 +826,44 @@ class SpecOneD(object):
         # needs to be tested
         # check for negative values?
 
-        if not np.array_equal(self.dispersion, secondary_spectrum.dispersion):
+        s_one = self.copy()
+        s_two = secondary_spectrum.copy()
+
+        if not np.array_equal(s_one.dispersion, s_two.dispersion):
             print ("Warning: Dispersion does not match.")
             print ("Warning: Flux will be interpolated.")
 
-            self.match_dispersions(secondary_spectrum, force=force)
+            s_one.match_dispersions(s_two, force=force,
+                                   method=method)
 
-        new_flux = self.flux - secondary_spectrum.flux
+        new_flux = s_one.flux - s_two.flux
 
-        if copy_flux_err == 'No' and isinstance(self.flux_err,
+        if copy_flux_err == 'No' and isinstance(s_one.flux_err,
                                                 np.ndarray) and \
-                isinstance(secondary_spectrum.flux_err, np.ndarray):
-            new_flux_err = np.sqrt(self.flux_err**2 + secondary_spectrum.flux_err**2)
+                isinstance(s_two.flux_err, np.ndarray):
+            new_flux_err = np.sqrt(s_one.flux_err**2 + s_two.flux_err**2)
         elif copy_flux_err == 'first':
-            new_flux_err = self.flux_err
+            new_flux_err = s_one.flux_err
         elif copy_flux_err == 'second':
-            new_flux_err = secondary_spectrum.flux_err
+            new_flux_err = s_two.flux_err
         else:
             new_flux_err = None
 
         if copy_header == 'first':
-            new_header = self.header
+            new_header = s_one.header
         elif copy_header == 'last':
-            new_header = secondary_spectrum.header
+            new_header = s_two.header
 
-        if inplace:
-            self.flux = new_flux
-            self.header = new_header
-        else:
-            return SpecOneD(dispersion=self.dispersion,
-                            flux=new_flux,
-                            flux_err=new_flux_err,
-                            header=new_header,
-                            unit=self.unit,
-                            mask=self.mask)
+
+        return SpecOneD(dispersion=s_one.dispersion,
+                        flux=new_flux,
+                        flux_err=new_flux_err,
+                        header=new_header,
+                        unit=s_one.unit,
+                        mask=s_one.mask)
 
     def divide(self, secondary_spectrum, copy_header='first', force=True,
-               inplace=False, copy_flux_err = 'No'):
+               copy_flux_err = 'No', method='interpolate'):
 
         """Divide the flux of primary spectrum by the secondary spectrum.
 
@@ -830,47 +898,44 @@ class SpecOneD(object):
 
         self.check_units(secondary_spectrum)
 
-        if not np.array_equal(self.dispersion, secondary_spectrum.dispersion):
+        s_one = self.copy()
+        s_two = secondary_spectrum.copy()
+
+        if not np.array_equal(self.dispersion, s_two.dispersion):
             print ("Warning: Dispersion does not match.")
             print ("Warning: Flux will be interpolated.")
 
-            self.match_dispersions(secondary_spectrum, force=force, match_secondary=False)
+            s_one.match_dispersions(s_two, force=force,
+                                   match_secondary=False, method=method)
 
-            print  (self.dispersion.shape, secondary_spectrum.dispersion.shape)
+        new_flux = s_one.flux / s_two.flux
 
-        new_flux = self.flux / secondary_spectrum.flux
-
-        if copy_flux_err == 'No' and isinstance(self.flux_err,
+        if copy_flux_err == 'No' and isinstance(s_one.flux_err,
                                                np.ndarray) and \
-                isinstance(secondary_spectrum.flux_err, np.ndarray):
-                new_flux_err = np.sqrt( (self.flux_err/ secondary_spectrum.flux)**2  + (new_flux/secondary_spectrum.flux*secondary_spectrum.flux_err)**2 )
+                isinstance(s_two.flux_err, np.ndarray):
+                new_flux_err = np.sqrt( (s_one.flux_err/ s_two.flux)**2  + (new_flux/s_two.flux*s_two.flux_err)**2 )
         elif copy_flux_err == 'first':
-            new_flux_err = self.flux_err
+            new_flux_err = s_one.flux_err
         elif copy_flux_err == 'second':
-            new_flux_err = secondary_spectrum.flux_err
+            new_flux_err = s_two.flux_err
         else:
             new_flux_err = None
 
 
         if copy_header == 'first':
-            new_header = self.header
+            new_header = s_one.header
         elif copy_header == 'last':
-            new_header = secondary_spectrum.header
+            new_header = s_two.header
 
-        if inplace:
-            self.flux = new_flux
-            self.header = new_header
-            self.flux_err = new_flux_err
-        else:
-            return SpecOneD(dispersion=self.dispersion,
-                            flux=new_flux,
-                            flux_err=new_flux_err,
-                            header=new_header,
-                            unit=self.unit,
-                            mask=self.mask)
+        return SpecOneD(dispersion=s_one.dispersion,
+                        flux=new_flux,
+                        flux_err=new_flux_err,
+                        header=new_header,
+                        unit=s_one.unit,
+                        mask=s_one.mask)
 
     def multiply(self, secondary_spectrum, copy_header='first', force=True,
-                 inplace=False, copy_flux_err = 'No'):
+                 copy_flux_err = 'No', method='interpolate'):
 
         """Multiply the flux of primary spectrum with the secondary spectrum.
 
@@ -904,44 +969,44 @@ class SpecOneD(object):
 
         self.check_units(secondary_spectrum)
 
-        if not np.array_equal(self.dispersion, secondary_spectrum.dispersion):
+        s_one = self.copy()
+        s_two = secondary_spectrum.copy()
+
+        if not np.array_equal(s_one.dispersion, s_two.dispersion):
             print ("Warning: Dispersion does not match.")
             print ("Warning: Flux will be interpolated.")
 
-            self.match_dispersions(secondary_spectrum, force=force)
+            s_one.match_dispersions(s_two, force=force,
+                                   method=method)
 
-        new_flux = self.flux * secondary_spectrum.flux
+        new_flux = s_one.flux * s_two.flux
 
-        if copy_flux_err == 'No' and isinstance(self.flux_err,
+        if copy_flux_err == 'No' and isinstance(s_one.flux_err,
                                                 np.ndarray) and \
-                isinstance(secondary_spectrum.flux_err, np.ndarray):
-            new_flux_err = np.sqrt(secondary_spectrum.flux**2 * self.flux_err**2 + self.flux**2 * secondary_spectrum.flux_err**2)
+                isinstance(s_two.flux_err, np.ndarray):
+            new_flux_err = np.sqrt(s_two.flux**2 * s_one.flux_err**2 + s_one.flux**2 * s_two.flux_err**2)
         elif copy_flux_err == 'first':
-            new_flux_err = self.flux_err
+            new_flux_err = s_one.flux_err
         elif copy_flux_err == 'second':
-            new_flux_err = secondary_spectrum.flux_err
+            new_flux_err = s_two.flux_err
         else:
             new_flux_err = None
 
         if copy_header == 'first':
-            new_header = self.header
+            new_header = s_one.header
         elif copy_header == 'last':
-            new_header = secondary_spectrum.header
+            new_header = s_two.header
 
-        if inplace:
-            self.flux = new_flux
-            self.header = new_header
-            self.flux_err = new_flux_err
-        else:
-            return SpecOneD(dispersion=self.dispersion,
-                            flux=new_flux,
-                            flux_err=new_flux_err,
-                            header=new_header,
-                            unit=self.unit,
-                            mask=self.mask)
+        return SpecOneD(dispersion=s_one.dispersion,
+                        flux=new_flux,
+                        flux_err=new_flux_err,
+                        header=new_header,
+                        unit=s_one.unit,
+                        mask=s_one.mask)
 
 
-    def plot(self, show_flux_err=False, show_raw_flux=False, mask_values=False):
+    def plot(self, show_flux_err=False, show_raw_flux=False,
+             mask_values=False):
 
         """Plot the spectrum
 
@@ -987,6 +1052,14 @@ class SpecOneD(object):
 
         if self.fit_output:
             self.ax.plot(self.dispersion[mask], self.fit_output.best_fit[mask])
+
+        lim_spec = self.copy()
+        lim_spec.restore()
+        lim_spec = lim_spec.mask_sn(5)
+        lim_spec = lim_spec.sigmaclip_flux(3, 3)
+        ylim_min = 0
+        ylim_max = lim_spec.flux[lim_spec.mask].max()
+        self.ax.set_ylim(ylim_min, ylim_max)
 
         plt.show()
 
@@ -1053,7 +1126,14 @@ class SpecOneD(object):
             self.ax.plot(self.dispersion[mask], self.obj_model, label='Obj '
                                                                       'model')
 
-        self.ax.set_ylim(self.flux[mask].min(), self.flux[mask].max())
+
+        lim_spec = self.copy()
+        lim_spec.restore()
+        lim_spec = lim_spec.mask_sn(5)
+        lim_spec = lim_spec.sigmaclip_flux(3, 3)
+        ylim_min = 0
+        ylim_max = lim_spec.flux[lim_spec.mask].max()
+        self.ax.set_ylim(ylim_min, ylim_max)
 
         self.ax.legend()
         plt.show()
@@ -1080,7 +1160,7 @@ class SpecOneD(object):
 
             # Warnings
             if limits[0] < self.dispersion[0]:
-                print (self.dispersion[0], limits[0])
+                print(self.dispersion[0], limits[0])
                 print("WARNING: Lower limit is below the lowest dispersion value. The lower limit is set to the minimum dispersion value.")
             if limits[1] > self.dispersion[-1]:
                 print("WARNING: Upper limit is above the highest dispersion value. The upper limit is set to the maximum dispersion value.")
@@ -1174,9 +1254,10 @@ class SpecOneD(object):
                             flux=flux,
                             flux_err=self.flux_err,
                             header=self.header,
-                            unit = self.unit)
+                            unit=self.unit)
 
-    def convolve_loglam(self, fwhm, inplace=False):
+    def convolve_loglam(self, fwhm, method='interpolate', inplace=False,
+                        force=False):
         """Convolve the spectrum in loglam space with a kernel function of specified width"""
 
         spec = self.copy()
@@ -1186,8 +1267,12 @@ class SpecOneD(object):
         # Step 1 convert spectrum to logarithmic wavelength (velocity space)
         spec.to_log_wavelength()
         # Interpolate to linear scale in logarithmic wavelength
-        new_disp = np.linspace(min(spec.dispersion), max(spec.dispersion),num = len(spec.dispersion))
-        spec.interpolate(new_disp)
+        new_disp = np.linspace(min(spec.dispersion), max(spec.dispersion),
+                               num=len(spec.dispersion))
+        if method == 'interpolate':
+            spec.interpolate(new_disp)
+        elif method == 'resample':
+            spec.resample(new_disp, force=force, inplace=True)
 
         # Step 2 convolve spectrum with function
         cen = (max(new_disp)-min(new_disp))/2. + min(new_disp)
@@ -1199,7 +1284,10 @@ class SpecOneD(object):
 
         # Step 3 convert back to original space
         spec.to_wavelength()
-        spec.interpolate(self.dispersion)
+        if method == 'interpolate':
+            spec.interpolate(self.dispersion)
+        elif method == 'resample':
+            spec.resample(self.dispersion, force=force, inplace=True)
 
         if inplace:
             self.flux = spec.flux
@@ -1427,6 +1515,7 @@ class SpecOneD(object):
             return spec
 
     def redshift(self, z, inplace=False):
+        # TODO Take care of flux conversion here as well!
 
         if inplace:
             self.dispersion = self.dispersion * (1.+z)
@@ -1485,7 +1574,7 @@ class SpecOneD(object):
         # mask = self.mask
         mask[:] = False
         mask[mask_index] = True
-        mask = mask * self.mask
+        mask = mask * np.array(self.mask, dtype=bool)
 
         if inplace:
             self.mask = mask
@@ -1531,7 +1620,7 @@ class SpecOneD(object):
 
             return spec
 
-    def resample(self, new_dispersion, inplace=False):
+    def resample(self, new_dispersion, inplace=False, force=False):
         """
         Function for resampling spectra (and optionally associated
         uncertainties) onto a new wavelength basis.
@@ -1572,6 +1661,11 @@ class SpecOneD(object):
 
         new_spec_wavs = new_dispersion
 
+        if force:
+            indices = np.where((new_spec_wavs < old_spec_wavs.max()) &
+                               (new_spec_wavs > old_spec_wavs.min()))
+            new_spec_wavs = new_spec_wavs[indices]
+
         # Arrays of left-hand sides and widths for the old and new bins
         spec_widths = np.zeros(old_spec_wavs.shape[0])
         spec_lhs = np.zeros(old_spec_wavs.shape[0])
@@ -1592,10 +1686,11 @@ class SpecOneD(object):
         filter_widths[:-1] = filter_lhs[1:-1] - filter_lhs[:-2]
 
         if filter_lhs[0] < spec_lhs[0] or filter_lhs[-1] > spec_lhs[-1]:
+
             raise ValueError("spectres: The new wavelengths specified must fall"
                              "within the range of the old wavelength values:",
                              filter_lhs[0], spec_lhs[0], filter_lhs[-1],
-                             spec_lhs[-1])
+                             spec_lhs[-1], "\n Consider setting force=True")
 
         # Generate output arrays to be populated
         res_fluxes = np.zeros(spec_fluxes[..., 0].shape + new_spec_wavs.shape)

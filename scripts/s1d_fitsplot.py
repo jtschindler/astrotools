@@ -47,7 +47,7 @@ if __name__ == '__main__':
                 if args.smooth is not None:
                     spec.smooth(args.smooth, inplace=True)
 
-                spec.sigmaclip_flux(low=4, up=4, inplace=True)
+                # spec.sigmaclip_flux(low=4, up=4, inplace=True)
                 spec.pypeit_plot(show_flux_err=True)
 
         elif len(hdu) > 1 or len(hdu) == 1:
@@ -55,12 +55,13 @@ if __name__ == '__main__':
 
             if args.save:
                 filename = os.path.splitext(args.filename)[0] +'.csv'
-                spec.save_to_csv(filename,format='linetools')
+                spec.save_to_csv(filename, format='linetools')
 
             if args.smooth is not None:
                 spec.smooth(args.smooth, inplace=True)
 
-            spec.sigmaclip_flux(low=4, up=4, inplace=True)
+
+            # spec.sigmaclip_flux(low=4, up=4, inplace=True)
             spec.plot(show_flux_err=True)
     except:
         raise ValueError("Fits type not understood")

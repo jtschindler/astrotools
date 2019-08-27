@@ -30,7 +30,7 @@ class QLF:
 
         if self.type == 0:
             #magnitude case
-            return mag_double_power_law( self.x, self.phi_star, self.x_star, \
+            return mag_double_power_law(self.x, self.phi_star, self.x_star, \
                                         self.alpha, self.beta)
 
         if self.type == 1:
@@ -197,7 +197,7 @@ class QLF:
 
         Mg = Mi + 0.51* (-0.5)
 
-        if z < self.z_p :
+        if z < self.z_p:
             alpha = self.alpha_l[0]
             beta = self.beta_l[0]
             k1 = self.k1l[0]
@@ -319,6 +319,84 @@ class QLF:
             self.beta = 1.3
 
         self.phi_star = pow(10,self.log_phi_star[0])
+
+
+    def setup_qlf_PD16(self):
+        self.name = "PD2016"
+        self.band = "i"  # converted to i-band, see the update function
+        self.band_wavelength = 445  # in nm
+        self.type = 0 # 0 = magnitudes, 1 = luminosities
+        self.k_correction = 0 # k-corrects magnitude to z=0
+        # self.k_correction = - 0.5964 # k-corrects magnitude to z=0
+
+
+        self.z_min = 0.68 # lower redshift limit of data for the QLF fit
+        self.z_max = 4.0 # upper redshift limit of data for the QLF fit
+
+        self.x_max = -11.7812
+        self.x_min = -38.7701
+
+        self.x = -25 # default magnitude value
+        self.z = 1.0 # default redshift value
+
+        # best fit values Table 7
+        self.log_phi_star = [-5.93, 0.09, 0.09]
+        self.Mg_star_z =      [-22.25, 0.49, 0.49]
+        self.alpha_0 =        [-3.89, 0.23, 0.23]
+        self.beta_0 =         [-1.47, 0.06, 0.06]
+        self.k1 =           [1.59, 0.28, 0.28]
+        self.k2 =           [-0.36, 0.09, 0.09]
+        self.c1a =          [-0.46, 0.10, 0.10]
+        self.c1b =          [-0.06, 0.10, 0.10]
+        self.c2 =          [-0.14, 0.17, 0.17]
+        self.c3 =          [0.32, 0.23, 0.23]
+        self.zp = 0
+
+    def update_qlf_PD16(self, Mg, z):
+
+        # Mg = Mi + 0.51 * (-0.5)
+
+        x_star_zp = self.Mg_star_z[0]
+        log_phi_star_zp = self.log_phi_star[0]
+        # x_star_zp = self.Mg_star_z[0] - 2.5 * (self.k1[0] * (0 - self.zp) +
+        # self.k2[0] * ( 0 - self.zp)** 2)
+        # log_phi_star_zp = self.log_phi_star[0] - self.c1a[0] * (0 - self.zp) \
+        #                   - self.c1b[0] * (0 - self.zp) ** 2
+
+        if z < 2.2:
+            # use the PLE model
+            self.phi_star = pow(10, log_phi_star_zp)
+            self.alpha = self.alpha_0[0]
+            self.beta = self.beta_0[0]
+
+            # Eq. 7 of Palanque - Delabrouille 2016
+            self.x_star = x_star_zp \
+                          - 2.5 * (self.k1[0] * (z - self.zp) + self.k2[0] * (
+                          z - self.zp)** 2)
+
+            print(self.phi_star, self.x_star, self.alpha, self.beta, z)
+
+        else :
+            # use the LEDE model
+            # Eq. 8,9 of Palanque - Delabrouille 2016
+            x_star_zp = self.Mg_star_z[0] \
+                          - 2.5 * (self.k1[0] * (2.2) + self.k2[0] * (
+                          2.2)** 2)
+            log_phi_star_zp = self.log_phi_star[0]
+
+            self.phi_star = log_phi_star_zp
+            self.phi_star += self.c1a[0] * (z - 2.2) + self.c1b[0] * (
+                        z - 2.2)** 2
+            self.phi_star = pow(10, self.phi_star)
+            self.x_star = x_star_zp + self.c2[0] * (z - 2.2)
+            self.alpha = self.alpha_0[0] + self.c3[0] * (z - 2.2)
+            self.beta = self.beta_0[0]
+
+            print(self.phi_star, self.x_star, self.alpha, self.beta, z)
+
+        self.x = Mg
+        self.z = z
+
 
 
 
