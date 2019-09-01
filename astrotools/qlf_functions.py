@@ -352,9 +352,9 @@ class QLF:
         self.c3 =          [0.32, 0.23, 0.23]
         self.zp = 0
 
-    def update_qlf_PD16(self, Mg, z):
+    def update_qlf_PD16(self, Mi, z):
 
-        # Mg = Mi + 0.51 * (-0.5)
+        Mg = Mi + 0.51 * (-0.5)
 
         x_star_zp = self.Mg_star_z[0]
         log_phi_star_zp = self.log_phi_star[0]
@@ -374,9 +374,9 @@ class QLF:
                           - 2.5 * (self.k1[0] * (z - self.zp) + self.k2[0] * (
                           z - self.zp)** 2)
 
-            print(self.phi_star, self.x_star, self.alpha, self.beta, z)
+            # print(self.phi_star, self.x_star, self.alpha, self.beta, z)
 
-        else :
+        else:
             # use the LEDE model
             # Eq. 8,9 of Palanque - Delabrouille 2016
             x_star_zp = self.Mg_star_z[0] \
@@ -392,7 +392,7 @@ class QLF:
             self.alpha = self.alpha_0[0] + self.c3[0] * (z - 2.2)
             self.beta = self.beta_0[0]
 
-            print(self.phi_star, self.x_star, self.alpha, self.beta, z)
+            # print(self.phi_star, self.x_star, self.alpha, self.beta, z)
 
         self.x = Mg
         self.z = z

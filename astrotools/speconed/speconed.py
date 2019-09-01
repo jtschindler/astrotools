@@ -182,7 +182,7 @@ class SpecOneD(object):
 
 
     def read_pypeit_fits(self, filename, unit='f_lam', exten=1):
-        """ Read a 1D fits pypeit file to populate the SpecOneD class.
+        """ Read a 1D fits pypeit fits file to populate the SpecOneD class.
 
         :param filename: str
             Path/Filename of the pypeit 1D fits file
@@ -201,14 +201,18 @@ class SpecOneD(object):
         self.unit = unit
         self.dispersion = hdu[exten].data['OPT_WAVE']
         self.raw_dispersion = hdu[exten].data['OPT_WAVE']
-        self.flux = hdu[exten].data['OPT_FLAM']*1e-17
-        self.raw_flux = hdu[exten].data['OPT_FLAM']*1e-17
-        self.flux_err = 1./np.sqrt(hdu[exten].data['OPT_FLAM_IVAR'])*1e-17
-        self.flux_err[self.flux_err == np.inf] = np.NaN
-        self.flux_err[self.flux_err == -np.inf] = np.NaN
-        self.raw_flux_err = self.flux_err
-        self.flux_sig = hdu[exten].data['OPT_FLAM_SIG']
+        self.flux = hdu[exten].data['OPT_FLAM'] * 1e-17
+        self.raw_flux = hdu[exten].data['OPT_FLAM'] * 1e-17
         self.mask = np.array(hdu[exten].data['OPT_MASK'], dtype=bool)
+        self.flux_ivar = hdu[exten].data['OPT_FLAM_IVAR']
+        self.flux_err = hdu[exten].data['OPT_FLAM_SIG'] * 1e-17
+        self.raw_flux_err = self.flux_err
+
+        # Mask all pixels where the flux error is 0
+        new_mask = np.ones_like(self.mask, dtype=bool)
+        new_mask[self.flux_err == 0] = 0
+        self.mask = new_mask
+
 
         if 'TELLURIC' in hdu[exten].columns.names:
             self.telluric = hdu[exten].data['TELLURIC']
@@ -396,16 +400,31 @@ class SpecOneD(object):
             self.mask = new_mask
 
         else:
-            return SpecOneD(dispersion=self.dispersion,
-                            flux=self.flux,
-                            flux_err=self.flux_err,
-                            header=self.header,
-                            unit=self.unit,
-                            mask=new_mask,
-                            raw_dispersion=self.raw_dispersion,
-                            raw_flux=self.raw_flux,
-                            raw_flux_err=self.raw_flux_err,
-                            )
+            spec = self.copy()
+            spec.mask = new_mask
+            return spec
+
+    def get_ivar_from_sigma(self):
+
+        if self.flux_err is None:
+            self.flux_ivar = None
+        else:
+            ivar = np.zeros_like(self.flux_err)
+            valid = self.flux_err > 0
+            ivar[valid] = 1./(self.flux_err[valid])**2
+
+            self.flux_ivar = ivar
+
+    def get_sigma_from_ivar(self):
+
+        if self.flux_ivar is None:
+            self.flux_err = None
+        else:
+            sigma = np.zeros_like(self.flux_ivar)
+            valid = self.flux_ivar > 0
+            sigma[valid] = 1./np.sqrt(self.flux_ivar[valid])
+
+            self.flux_err = sigma
 
 
 
@@ -1054,14 +1073,27 @@ class SpecOneD(object):
             self.ax.plot(self.dispersion[mask], self.fit_output.best_fit[mask])
 
         lim_spec = self.copy()
-        lim_spec.restore()
-        lim_spec = lim_spec.mask_sn(5)
-        lim_spec = lim_spec.sigmaclip_flux(3, 3)
-        ylim_min = 0
-        ylim_max = lim_spec.flux[lim_spec.mask].max()
+        ylim_min, ylim_max = lim_spec.get_specplot_ylim()
+        # lim_spec.restore()
+        # lim_spec = lim_spec.mask_sn(5)
+        # lim_spec = lim_spec.sigmaclip_flux(3, 3)
+        # ylim_min = 0
+        # ylim_max = lim_spec.flux[lim_spec.mask].max()
         self.ax.set_ylim(ylim_min, ylim_max)
 
         plt.show()
+
+    def get_specplot_ylim(self):
+
+        # spec = self.copy()
+        # spec = spec.mask_sn(5)
+        # spec = spec.sigmaclip_flux(3, 3, niter=2)
+        median = np.median(self.flux)
+
+        ylim_min = -0.5*median
+        ylim_max = 3*median
+
+        return ylim_min, ylim_max
 
 
     def pypeit_plot(self, show_flux_err=False, show_raw_flux=False, mask_values=False):
@@ -1239,22 +1271,50 @@ class SpecOneD(object):
         if isinstance(self.flux_err, np.ndarray):
             self.flux_err = f_err(self.dispersion)
 
-    def smooth(self, width, kernel="boxcar", inplace=False):
+    def smooth(self, width, kernel="boxcar", scale_sigma=True, inplace=False):
+        """Smoothing the spectrum using a boxcar oder gaussian kernel.
+
+        This function uses astropy.convolution to convolve the spectrum with
+        the selected kernel. If scale_sigma=True, the flux error is scaled
+        down according to sqrt(width).
+
+        :param width: int
+            Width (in pixels) of the kernel)
+        :param kernel: str
+            String indicating whether to use the Boxcar ("boxcar") or
+            Gaussian ("gaussian") kernel.
+        :param scale_sigma: bool
+            Boolean to indicate whether to scale the flux error according to
+            the width of the boxcar kernel.
+        :param inplace: bool
+            Boolean to indicate whether to modify the active spectrum or
+            return a copy. The default is to always return a copy.
+        :return:
+        """
 
         if kernel == "boxcar" or kernel == "Boxcar":
             kernel = Box1DKernel(width)
         elif kernel == "gaussian" or kernel == "Gaussian":
             kernel = Gaussian1DKernel(width)
 
-        if inplace:
-            self.flux = convolve(self.flux, kernel)
+        new_flux = convolve(self.flux, kernel)
+        if self.flux_err is not None:
+            new_flux_err = convolve(self.flux_err, kernel)
+            if scale_sigma:
+                new_flux_err /= np.sqrt(width)
         else:
-            flux = convolve(self.flux, kernel)
-            return SpecOneD(dispersion=self.dispersion,
-                            flux=flux,
-                            flux_err=self.flux_err,
-                            header=self.header,
-                            unit=self.unit)
+            new_flux_err = self.flux_err
+
+
+        if inplace:
+            self.flux = new_flux
+            self.flux_err = self.flux_err
+        else:
+            spec = self.copy()
+            spec.flux = new_flux
+            spec.flux_err = new_flux_err
+            return spec
+
 
     def convolve_loglam(self, fwhm, method='interpolate', inplace=False,
                         force=False):
