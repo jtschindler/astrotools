@@ -289,9 +289,14 @@ class ResultCanvas(FigureCanvas):
 
         # multiplication/divison of the spectra
         if mode == "divide":
-            self.result_spec = spec_prime.divide(spec_sec)
+            self.result_spec = spec_prime.divide(spec_sec,
+                                                 copy_flux_err=in_dict[
+                                                     'copy_err'])
         if mode == "multiply":
-            self.result_spec = spec_prime.multiply(spec_sec)
+            self.result_spec = spec_prime.multiply(spec_sec,
+                                                   copy_flux_err=in_dict[
+                                                       'copy_err']
+                                                   )
 
         in_dict['result_spec'] = self.result_spec
 
@@ -299,9 +304,10 @@ class ResultCanvas(FigureCanvas):
                      self.result_spec.flux[self.result_spec.mask], 'k', lw=1.5)
 
         # print (self.result_spec.flux_err)
-        # self.ax.plot(self.result_spec.dispersion[self.result_spec.mask],
-        #              self.result_spec.flux_err[self.result_spec.mask], 'grey',
-                     # lw=1.5)
+        if self.result_spec.flux_err is not None:
+            self.ax.plot(self.result_spec.dispersion[self.result_spec.mask],
+                         self.result_spec.flux_err[self.result_spec.mask], 'grey',
+                         lw=1.5)
 
         # Setting the plot boundaries
         x2_lo = in_dict['x2_lo']
@@ -335,7 +341,8 @@ class SpecOneDGui(QMainWindow):
 
 
 
-    def __init__(self, spec_list, mode=None):
+    def __init__(self, spec_list, mode=None, fileformat='fits', copy_flux_err
+        = 'No'):
         """__init__ method for the SpecOneDGui class
 
         Parameters
@@ -350,6 +357,8 @@ class SpecOneDGui(QMainWindow):
         QtWidgets.QMainWindow.__init__(self)
 
         self.act = 0
+        self.fileformat = fileformat
+        self.copy_err = copy_flux_err
 
         for spec in spec_list:
             spec.z = 0
@@ -371,11 +380,12 @@ class SpecOneDGui(QMainWindow):
         self.spec_list_copy = spec_list
 
         self.in_dict = {'spec_list': spec_list,
-                        'result_spec' : None,
+                        'result_spec': None,
                         'x_lo': None,
                         'x_hi': None,
                         'y_lo': None,
-                        'y_hi': None}
+                        'y_hi': None,
+                        'copy_err': copy_flux_err}
 
         if mode == None or mode == "example":
             self.SimplePlotMode()
@@ -713,25 +723,28 @@ class SpecOneDGui(QMainWindow):
         spec = self.in_dict['result_spec']
 
 
-        try:
-            object_1 = self.in_dict['spec_list'][0].header['OBJECT']
-        except:
-            object_1 = 'OBJECT'
-        try:
-            object_2 = self.in_dict['spec_list'][1].header['OBJECT']
-        except:
-            object_2 = 'OBJECT'
+        # try:
+        #     object_1 = self.in_dict['spec_list'][0].header['OBJECT']
+        # except:
+        #     object_1 = 'OBJECT'
+        # try:
+        #     object_2 = self.in_dict['spec_list'][1].header['OBJECT']
+        # except:
+        #     object_2 = 'OBJECT'
+        #
+        #
+        # comment = str(object_1)+' '+str(self.mode)+' '+str(object_2)
 
-
-        comment = str(object_1)+' '+str(self.mode)+' '+str(object_2)
-
-        print(comment)
-
-        self.in_dict['result_spec'].save_to_fits(filename, comment=comment)
+        # print(comment)
+        if self.fileformat == 'fits':
+            self.in_dict['result_spec'].save_to_fits(filename, comment=comment)
+        elif self.fileformat == 'hdf':
+            self.in_dict['result_spec'].save_to_hdf(filename)
 
     def show_savefile_dialog(self):
 
-        filename, ftype = QFileDialog.getSaveFileName(self,"Save File",os.getcwd(), 'FITS (*.fits)')
+
+        filename, ftype = QFileDialog.getSaveFileName(self,"Save File",os.getcwd())
 
         return filename
 

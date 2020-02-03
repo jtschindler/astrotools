@@ -62,7 +62,7 @@ class Cosmology:
     def hubble_distance(self):
         # in h^-3 Mpc^3
 
-        return  c / 1000 / self.H_0
+        return c / 1000 / self.H_0
 
     def hubble_volume(self):
         # in h^-3 Mpc^3

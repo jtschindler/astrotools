@@ -1,3 +1,5 @@
+
+import numpy as np
 import pandas as pd
 # import pdfkit
 import os
@@ -39,7 +41,28 @@ def decra2hms_nvss(dra):
     hours, minutes = divmod(minutes, 60)
     return '{0:02g} {1:02g} {2:05.2f}'.format(hours, minutes, seconds)
 
-def hmsra2decdeg(ra_hms,delimiter=':'):
+
+def hmsra2decdeg(ra_hms, delimiter=':'):
+
+    if isinstance(ra_hms, float) or isinstance(ra_hms, int):
+
+        return convert_hmsra2decdeg(ra_hms, delimiter=delimiter)
+
+    elif isinstance(ra_hms, np.ndarray):
+
+        ra_deg = np.zeros_like(ra_hms)
+        for idx, ra in enumerate(ra_hms):
+
+            ra_deg[idx] = convert_hmsra2decdeg(ra, delimiter=delimiter)
+
+        return ra_deg
+
+    else:
+        raise TypeError("Input type {} not understood (float, int, "
+                        "np.ndarray)".format(type(ra_hms)))
+
+
+def convert_hmsra2decdeg(ra_hms, delimiter=':'):
 
     if delimiter is None:
         ra_hours = float(ra_hms[0:2])
@@ -50,14 +73,32 @@ def hmsra2decdeg(ra_hms,delimiter=':'):
         ra_minutes = float(ra_hms[3:5])
         ra_seconds = float(ra_hms[6:12])
 
-    print (ra_hours, ra_minutes, ra_seconds)
-    print ((ra_hours + ra_minutes/60. + ra_seconds/3600.) * 15.)
+    print(ra_hours, ra_minutes, ra_seconds)
+    print((ra_hours + ra_minutes/60. + ra_seconds/3600.) * 15.)
 
     return (ra_hours + ra_minutes/60. + ra_seconds/3600.) * 15.
 
 
+def dmsdec2decdeg(dec_dms, delimiter=':'):
 
-def dmsdec2decdeg(dec_dms,delimiter=':'):
+
+    if isinstance(dec_dms, float) or isinstance(dec_dms, int):
+
+        return convert_hmsra2decdeg(dec_dms, delimiter=delimiter)
+
+    elif isinstance(dec_dms, np.ndarray):
+
+        dec_deg = np.zeros_like(dec_dms)
+        for idx, dec in enumerate(dec_dms):
+            dec_deg[idx] = convert_dmsdec2decdeg(dec, delimiter=delimiter)
+
+        return dec_deg
+
+    else:
+        raise TypeError("Input type {} not understood (float, int, "
+                        "np.ndarray)".format(type(dec_dms)))
+
+def convert_dmsdec2decdeg(dec_dms,delimiter=':'):
 
     if delimiter is None:
         dec_degrees = float(dec_dms[0:3])

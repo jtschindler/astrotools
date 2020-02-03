@@ -34,6 +34,7 @@ from astropy.io import fits
 from astropy.constants import c
 from astropy.convolution import convolve, Gaussian1DKernel, Box1DKernel
 
+from scipy.signal import medfilt
 from matplotlib import rc
 import matplotlib.pyplot as plt
 
@@ -42,6 +43,18 @@ from numpy.polynomial import Legendre, Chebyshev, Polynomial
 from lmfit import Model
 from lmfit.models import ExponentialModel, GaussianModel, LinearModel
 
+from IPython import embed
+
+black = (0, 0, 0)
+orange = (230/255., 159/255., 0)
+blue = (86/255., 180/255., 233/255.)
+green = (0, 158/255., 115/255.)
+yellow = (240/255., 228/255., 66/255.)
+dblue = (0, 114/255., 178/255.)
+vermillion = (213/255., 94/255., 0)
+purple = (204/255., 121/255., 167/255.)
+
+color_list = [vermillion, dblue, green, purple, yellow, orange, blue]
 
 datadir = os.path.split(__file__)[0]
 datadir = os.path.split(datadir)[0] + '/data/'
@@ -331,7 +344,20 @@ class SpecOneD(object):
         if self.flux_err is not None:
             df['flux_err'] = self.flux_err
 
-        df.to_hdf(filename,'data')
+        df.to_hdf(filename, 'data')
+
+    def read_from_hdf(self, filename):
+
+        df = pd.read_hdf(filename, 'data')
+
+        self.dispersion = df['dispersion'].values
+        self.flux = df['flux'].values
+        self.flux_err = df['flux_err'].values
+        self.unit = 'f_lam'
+        self.reset_mask()
+        self.override_raw()
+
+        print(self.flux_err)
 
 
     def save_to_csv(self, filename, format='linetools'):
@@ -470,7 +496,7 @@ class SpecOneD(object):
 
         self.raw_dispersion = self.dispersion
         self.raw_flux = self.flux
-        self.flux_err = self.raw_flux_err
+        self.raw_flux_err = self.flux_err
 
     def restore(self):
         """ Override the dispersion, flux and flux_err
@@ -928,7 +954,7 @@ class SpecOneD(object):
                                    match_secondary=False, method=method)
 
         new_flux = s_one.flux / s_two.flux
-
+        print(copy_flux_err)
         if copy_flux_err == 'No' and isinstance(s_one.flux_err,
                                                np.ndarray) and \
                 isinstance(s_two.flux_err, np.ndarray):
@@ -940,6 +966,7 @@ class SpecOneD(object):
         else:
             new_flux_err = None
 
+        print(new_flux_err, s_one.flux_err)
 
         if copy_header == 'first':
             new_header = s_one.header
@@ -1085,18 +1112,23 @@ class SpecOneD(object):
 
     def get_specplot_ylim(self):
 
-        # spec = self.copy()
-        # spec = spec.mask_sn(5)
+        spec = self.copy()
+        # spec = self.mask_sn(10)
         # spec = spec.sigmaclip_flux(3, 3, niter=2)
-        median = np.median(self.flux)
+        percentiles = np.percentile(spec.flux[spec.mask], [16, 84])
+        median = np.median(spec.flux[spec.mask])
+        delta = np.abs(percentiles[1]-median)
+        # print('delta', delta)
+        # print('percentiles', percentiles)
 
         ylim_min = -0.5*median
-        ylim_max = 3*median
+        ylim_max = 4*percentiles[1]
 
         return ylim_min, ylim_max
 
 
-    def pypeit_plot(self, show_flux_err=False, show_raw_flux=False, mask_values=False):
+    def pypeit_plot(self, show_flux_err=False, show_raw_flux=False,
+                    mask_values=False, ymax=None):
 
         """Plot the spectrum assuming it is a pypeit spectrum
 
@@ -1115,9 +1147,10 @@ class SpecOneD(object):
 
         # Add second axis to plot telluric model
         if hasattr(self, 'telluric'):
-            telluric = self.telluric / self.telluric.max() * np.median(
+            telluric = self.telluric[mask] / self.telluric.max() * np.median(
                 self.flux[mask]) * 2.5
-            self.ax.plot(self.dispersion[mask], telluric, label='Telluric')
+            self.ax.plot(self.dispersion[mask], telluric[mask],
+                         label='Telluric')
 
         if show_flux_err:
             self.ax.plot(self.dispersion[mask], self.flux_err[mask], 'grey',
@@ -1131,15 +1164,18 @@ class SpecOneD(object):
 
         if self.unit=='f_lam':
             self.ax.set_xlabel(r'$\rm{Wavelength}\ [\rm{\AA}]$', fontsize=15)
-            self.ax.set_ylabel(r'$\rm{Flux}\ f_{\lambda}\ [\rm{erg}\,\rm{s}^{-1}\,\rm{cm}^{2}\,\rm{\AA}^{-1}]$', fontsize=15)
+            self.ax.set_ylabel(r'$\rm{Flux}\ f_{\lambda}\ [\rm{erg}\,\rm{s}^{'
+                               r'-1}\,\rm{cm}^{-2}\,\rm{\AA}^{-1}]$', fontsize=15)
 
         elif self.unit =='f_nu':
             self.ax.set_xlabel(r'$\rm{Frequency}\ [\rm{Hz}]$', fontsize=15)
-            self.ax.set_ylabel(r'$\rm{Flux}\ f_{\nu}\ [\rm{erg}\,\rm{s}^{-1}\,\rm{cm}^{2}\,\rm{Hz}^{-1}]$', fontsize=15)
+            self.ax.set_ylabel(r'$\rm{Flux}\ f_{\nu}\ [\rm{erg}\,\rm{s}^{'
+                               r'-1}\,\rm{cm}^{-2}\,\rm{Hz}^{-1}]$', fontsize=15)
 
         elif self.unit =='f_loglam':
             self.ax.set_xlabel(r'$\log\rm{Wavelength}\ [\log\rm{\AA}]$', fontsize=15)
-            self.ax.set_ylabel(r'$\rm{Flux}\ f_{\lambda}\ [\rm{erg}\,\rm{s}^{-1}\,\rm{cm}^{2}\,(\log\rm{\AA})^{-1}]$', fontsize=15)
+            self.ax.set_ylabel(r'$\rm{Flux}\ f_{\lambda}\ [\rm{erg}\,\rm{s}^{'
+                               r'-1}\,\rm{cm}^{-2}\,(\log\rm{\AA})^{-1}]$', fontsize=15)
 
         else:
             raise ValueError("Unrecognized units")
@@ -1164,11 +1200,15 @@ class SpecOneD(object):
         lim_spec = lim_spec.mask_sn(5)
         lim_spec = lim_spec.sigmaclip_flux(3, 3)
         ylim_min = 0
-        ylim_max = lim_spec.flux[lim_spec.mask].max()
+        if ymax == None:
+            ylim_max = lim_spec.flux[lim_spec.mask].max()
+        else:
+            ylim_max = ymax
         self.ax.set_ylim(ylim_min, ylim_max)
 
         self.ax.legend()
         plt.show()
+
 
     def fit_model_spectrum(self, mask_values=True):
 
@@ -1308,7 +1348,7 @@ class SpecOneD(object):
 
         if inplace:
             self.flux = new_flux
-            self.flux_err = self.flux_err
+            self.flux_err = new_flux_err
         else:
             spec = self.copy()
             spec.flux = new_flux
@@ -1455,7 +1495,7 @@ class SpecOneD(object):
         return total_flux
 
     def calculate_passband_magnitude(self, passband, mag_system='AB',
-                                      force=False):
+                                      force=False, matching='resample'):
         # This function is written for passbands in quantum efficiency
         # Therefore, the (h*nu)^-1 term is not included in the integral
 
@@ -1479,13 +1519,13 @@ class SpecOneD(object):
             if overlap != 'primary':
                 raise ValueError('The spectrum does not fill the passband')
         else:
-            print ("Warning: Force was set to TRUE. The spectrum might not fully fill the passband!")
+            print("Warning: Force was set to TRUE. The spectrum might not fully fill the passband!")
 
-        passband.match_dispersions(spec, force=force)
+        passband.match_dispersions(spec, force=force, method=matching)
 
         spec.flux = passband.flux * spec.flux
 
-        total_flux = np.trapz(spec.flux , spec.dispersion)
+        total_flux = np.trapz(spec.flux, spec.dispersion)
 
         if total_flux <= 0.0:
             raise ValueError('Integrated flux is <= 0')
@@ -1496,7 +1536,7 @@ class SpecOneD(object):
 
         flat = FlatSpectrum(spec.dispersion, unit='f_nu')
 
-        passband_flux = np.trapz(flat.flux * passband.flux ,
+        passband_flux = np.trapz(flat.flux * passband.flux,
                                  flat.dispersion)
 
         ratio = total_flux / passband_flux
@@ -1504,27 +1544,42 @@ class SpecOneD(object):
         return -2.5 * np.log10(ratio)
 
     def renormalize_by_magnitude(self, magnitude, passband, mag_system='AB',
-                                 force=False, inplace=False):
+                                 force=False, inplace=False,
+                                 matching='resample', output='spectrum'):
 
         spec_mag = self.calculate_passband_magnitude(passband,
                                                      mag_system=mag_system,
-                                                     force=force)
+                                                     force=force,
+                                                     matching=matching)
 
         dmag = magnitude - spec_mag
 
-        if inplace:
-            self.to_frequency
-            self.flux_scale_factor = 10**(-0.4*dmag)
-            self.flux = self.flux * 10**(-0.4*dmag)
-            self.to_wavelength
-        else:
-            spec = self.copy()
-            spec.to_frequency
-            spec.flux_scale_factor = 10**(-0.4*dmag)
-            spec.flux = spec.flux * 10**(-0.4*dmag)
-            spec.to_wavelength
+        if output == 'spectrum':
 
-            return spec
+            if inplace:
+                self.to_frequency
+                self.flux_scale_factor = 10**(-0.4*dmag)
+                self.flux = self.flux * 10**(-0.4*dmag)
+                if self.flux_err is not None:
+                    self.flux_err = self.flux_err * 10**(-0.4*dmag)
+                self.to_wavelength
+            else:
+                spec = self.copy()
+                spec.to_frequency
+                spec.flux_scale_factor = 10**(-0.4*dmag)
+                spec.flux = spec.flux * 10**(-0.4*dmag)
+                if spec.flux_err is not None:
+                    spec.flux_err = spec.flux_err * 10**(-0.4*dmag)
+                spec.to_wavelength
+
+                return spec
+
+        elif output == 'flux_factor':
+
+            return 10**(-0.4*dmag)
+
+        else:
+            raise ValueError("output mode not understood")
 
 
 
@@ -1574,16 +1629,54 @@ class SpecOneD(object):
 
             return spec
 
+    def doppler_shift(self, z, method='redshift', inplace=False):
+        pass
+
     def redshift(self, z, inplace=False):
         # TODO Take care of flux conversion here as well!
+        # TODO Taken care of flux conversion, check how IVAR behaves
 
         if inplace:
             self.dispersion = self.dispersion * (1.+z)
+            # self.flux /= (1.+z)
+            # self.flux_err /= (1.+z)
         else:
             spec = self.copy()
             spec.dispersion = spec.dispersion * (1.+z)
+            # spec.flux /= (1.+z)
+            # spec.flux_err /= (1.+z)
 
             return spec
+
+
+    def medianclip_flux(self, sigma=3, binsize=11, inplace=False):
+        """
+        Quick hack for sigmaclipping using a running median
+        :param sigma:
+        :param binsize:
+        :param inplace:
+        :return:
+        """
+
+        flux = self.flux.copy()
+        flux_err = self.flux_err.copy()
+
+        median = medfilt(flux, kernel_size=binsize)
+
+        diff = np.abs(flux-median)
+
+        mask = self.mask.copy()
+
+        mask[diff > sigma * flux_err] = 0
+
+        if inplace:
+            self.mask = mask
+        else:
+            spec = self.copy()
+            spec.mask = mask
+
+            return spec
+
 
     def sigmaclip_flux(self, low=3, up=3, binsize=120, niter=5, inplace=False):
 
@@ -1718,6 +1811,8 @@ class SpecOneD(object):
         spec_fluxes = self.flux
         if self.flux_err is not None:
             spec_errs = self.flux_err
+        else:
+            spec_errs = None
 
         new_spec_wavs = new_dispersion
 
@@ -1910,11 +2005,212 @@ def combine_spectra(filenames, method='average', file_format='fits'):
                                   'average')
 
 
+def pypeit_spec1d_plot(filename, show_flux_err=True, mask_values=False,
+                        ex_value='OPT', show='flux', smooth=None):
+
+    # plot_setup
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(15, 7), dpi=140)
+    fig.subplots_adjust(left=0.09, right=0.97, top=0.89, bottom=0.16)
+
+    # Plot 0-line
+    ax.axhline(y=0.0, linewidth=1.5, color='k', linestyle='--')
+
+    # read the pypeit echelle file
+    hdu = fits.open(filename)
+
+    n_spec = hdu[0].header['NSPEC']
+    target = hdu[0].header['TARGET']
+    # instrument = hdu[0].header['INSTRUME']
 
 
+    ylim_min = []
+    ylim_max = []
+
+    for order in range(1, n_spec+1):
+
+        if order % 2 == 0:
+            color = vermillion
+        else:
+            color = dblue
+
+        wavelength = hdu[order].data['{}_WAVE'.format(ex_value)]
+        if mask_values:
+            mask = hdu[order].data['{}_MASK'.format(ex_value)]
+
+        else:
+            mask = np.ones_like(wavelength, dtype=bool)
+
+        # masking the value and wavelength = 0
+        wave_mask = wavelength > 1.0
+
+        mask = np.logical_and(mask, wave_mask)
 
 
-def comparison_plot(spectrum_a, spectrum_b, spectrum_result, show_flux_err=True):
+        if '{}_FLAM'.format(ex_value) in hdu[order].columns.names:
+            flux = hdu[order].data['{}_FLAM'.format(ex_value)]
+            flux_ivar = hdu[order].data['{}_FLAM_IVAR'.format(ex_value)]
+            flux_sigma = hdu[order].data['{}_FLAM_SIG'.format(ex_value)]
+        else:
+            counts = hdu[order].data['{}_COUNTS'.format(ex_value)]
+            counts_ivar = hdu[order].data['{}_COUNTS_IVAR'.format(ex_value)]
+            counts_sigma = hdu[order].data['{}_COUNTS_SIG'.format(ex_value)]
+            show = 'counts'
+
+        if show == 'counts':
+            if smooth is not None:
+                counts = convolve(counts, Box1DKernel(smooth))
+                counts_sigma /= np.sqrt(smooth)
+
+            ax.plot(wavelength[mask], counts[mask], color=color)
+            yy = counts[mask]
+            if show_flux_err:
+                ax.plot(wavelength[mask], counts_sigma[mask], color=color,
+                        alpha=0.5)
+
+        elif show == 'flux':
+            if smooth is not None:
+                flux = convolve(flux, Box1DKernel(smooth))
+                flux_sigma /= np.sqrt(smooth)
+
+            ax.plot(wavelength[mask], flux[mask], color=color, alpha=0.8)
+            yy = flux[mask]
+            if show_flux_err:
+                ax.plot(wavelength[mask], flux_sigma[mask], color=color,
+                        alpha=0.5)
+        else:
+            raise ValueError('Variable input show = {} not '
+                             'understood'.format(show))
+
+        percentiles = np.percentile(yy, [16, 84])
+        median = np.median(yy)
+        delta = np.abs(percentiles[1] - median)
+        # print('delta', delta)
+        # print('percentiles', percentiles)
+
+        ylim_min.append(-0.5 * median)
+        ylim_max.append(4 * percentiles[1])
+
+
+    if show == 'counts':
+        ax.set_ylabel(
+            r'$\rm{Counts}\ [\rm{ADU}]$', fontsize=15)
+    elif show == 'flux':
+        ax.set_ylabel(
+            r'$\rm{Flux}\ f_{\lambda}\ [\rm{erg}\,\rm{s}^{-1}\,\rm{cm}^{-2}\,'
+            r'\rm{\AA}^{-1}]$',
+            fontsize=15)
+    else:
+        raise ValueError('Variable input show = {} not '
+                         'understood'.format(show))
+
+    ax.set_xlabel(r'$\rm{Wavelength}\ [\rm{\AA}]$', fontsize=15)
+
+    ax.set_ylim(min(ylim_min), max(ylim_max))
+
+    # plt.title(r'{} {}'.format(target, instrument))
+
+    plt.legend()
+
+    plt.show()
+
+
+def pypeit_multi_plot(filenames, show_flux_err=True, show_tellurics=False,
+    mask_values=False, smooth=None, ymax=None):
+    """Plot the spectrum assuming it is a pypeit spectrum
+
+     """
+
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(15, 7), dpi=140)
+    fig.subplots_adjust(left=0.09, right=0.97, top=0.89, bottom=0.16)
+
+    # Plot 0-line
+    ax.axhline(y=0.0, linewidth=1.5, color='k', linestyle='--')
+
+    max_limits = []
+
+    for idx, filename in enumerate(filenames):
+
+        color = color_list[idx]
+
+        spec = SpecOneD()
+        spec.read_pypeit_fits(filename)
+
+        if mask_values:
+            mask = spec.mask
+        else:
+            mask = np.ones(spec.dispersion.shape, dtype=bool)
+
+        if smooth is not None and type(smooth) is int:
+            spec.smooth(smooth, inplace=True)
+
+        label = filename
+
+
+        # Add second axis to plot telluric model
+        if show_tellurics is True:
+            telluric = spec.telluric[mask] / spec.telluric.max() * np.median(
+                spec.flux[mask]) * 2.5
+            ax.plot(spec.dispersion[mask], telluric[mask],
+                         label='Telluric', color=color, alpha=0.5, ls='..')
+
+        if show_flux_err:
+            ax.plot(spec.dispersion[mask], spec.flux_err[mask], 'grey',
+                         lw=1, label='Flux Error', color=color, alpha=0.5)
+
+
+        ax.plot(spec.dispersion[mask], spec.flux[mask], 'k',
+                     linewidth=1, label=label, color=color)
+
+        # # Add OBJ model if it exists
+        # if hasattr(spec, 'obj_model'):
+        #     ax.plot(spec.dispersion[mask], spec.obj_model, label='Obj '
+        #                                                               'model')
+
+        lim_spec = spec.copy()
+        lim_spec.restore()
+        lim_spec = lim_spec.mask_sn(5)
+        lim_spec = lim_spec.sigmaclip_flux(3, 3)
+
+        max_limits.append(lim_spec.flux[lim_spec.mask].max())
+
+    if spec.unit == 'f_lam':
+        ax.set_xlabel(r'$\rm{Wavelength}\ [\rm{\AA}]$', fontsize=15)
+        ax.set_ylabel(
+            r'$\rm{Flux}\ f_{\lambda}\ [\rm{erg}\,\rm{s}^{-1}\,\rm{cm}^{-2}\,'
+            r'\rm{\AA}^{-1}]$',
+            fontsize=15)
+
+    elif spec.unit == 'f_nu':
+        ax.set_xlabel(r'$\rm{Frequency}\ [\rm{Hz}]$', fontsize=15)
+        ax.set_ylabel(
+            r'$\rm{Flux}\ f_{\nu}\ [\rm{erg}\,\rm{s}^{-1}\,\rm{cm}^{-2}\,'
+            r'\rm{Hz}^{-1}]$',
+            fontsize=15)
+
+    elif spec.unit == 'f_loglam':
+        ax.set_xlabel(r'$\log\rm{Wavelength}\ [\log\rm{\AA}]$',
+                           fontsize=15)
+        ax.set_ylabel(
+            r'$\rm{Flux}\ f_{\lambda}\ [\rm{erg}\,\rm{s}^{-1}\,\rm{cm}^{-2}\,'
+            r'(\log\rm{\AA})^{-1}]$',
+            fontsize=15)
+
+    else:
+        raise ValueError("Unrecognized units")
+
+
+    ylim_min = 0
+    if ymax == None:
+        ylim_max = max(max_limits)
+    else:
+        ylim_max = ymax
+    ax.set_ylim(ylim_min, ylim_max)
+    ax.legend()
+    plt.show()
+
+
+def comparison_plot(spectrum_a, spectrum_b, spectrum_result,
+                    show_flux_err=True):
 
     fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1, figsize=(15,7), dpi=140)
     fig.subplots_adjust(left=0.09, right=0.97, top=0.89, bottom=0.16)

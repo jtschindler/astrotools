@@ -24,6 +24,9 @@ def parse_arguments():
     parser.add_argument('--save', required=False, type=bool,
                         help='Save it as a csv file.')
 
+    parser.add_argument('-ymax', '--ymax', required=False, type=float,
+                        help='Setting the maximum value for the y-axis.')
+
     return parser.parse_args()
 
 
@@ -48,7 +51,7 @@ if __name__ == '__main__':
                     spec.smooth(args.smooth, inplace=True)
 
                 # spec.sigmaclip_flux(low=4, up=4, inplace=True)
-                spec.pypeit_plot(show_flux_err=True)
+                spec.pypeit_plot(show_flux_err=True, ymax=args.ymax)
 
         elif len(hdu) > 1 or len(hdu) == 1:
             spec.read_from_fits(filename=args.filename)
@@ -62,6 +65,6 @@ if __name__ == '__main__':
 
 
             # spec.sigmaclip_flux(low=4, up=4, inplace=True)
-            spec.plot(show_flux_err=True)
+            spec.plot(show_flux_err=True, ymax=args.ymax)
     except:
         raise ValueError("Fits type not understood")

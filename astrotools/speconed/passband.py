@@ -24,7 +24,7 @@ class PassBand(SpecOneD):
                                            flux=flux, flux_err=flux_err,
                                            header=header, unit=unit)
 
-    def load_passband(self, passband_name):
+    def load_passband(self, passband_name, tol=0.01):
 
 
         passband_data = np.genfromtxt(datadir+'passbands/'+passband_name+'.dat')
@@ -41,10 +41,23 @@ class PassBand(SpecOneD):
             # micron to Angstroem
             wavelength = wavelength * 10000.
 
-        elif filter_group == "LSST":
+        elif filter_group in ["LSST", "SWIRC"]:
             # nm to Angstroem
             wavelength = wavelength * 10.
 
+        # correct percent to fraction of 1
+        if filter_group in ["SWIRC"]:
+            throughput = throughput / 100.
+
+        # order wavelength in increasing order
+        if wavelength[0] > wavelength[-1]:
+            wavelength = wavelength[::-1]
+            throughput = throughput[::-1]
+
+        # only select passband ranges with contributions above tol
+        tolerance_mask = throughput > tol
+        throughput = throughput[tolerance_mask]
+        wavelength = wavelength[tolerance_mask]
 
         self.dispersion = wavelength
         self.flux = throughput
@@ -120,7 +133,7 @@ class PassBand(SpecOneD):
             self.ax.set_xlabel(r'$\rm{Frequency}\ [\rm{Hz}]$', fontsize=15)
             self.ax.set_ylabel(r'$\rm{Filter\ Transmission}$', fontsize=15)
 
-        else :
+        else:
             raise ValueError("Unrecognized units")
 
         # If a model spectrum exists, print it

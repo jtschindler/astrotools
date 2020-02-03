@@ -42,22 +42,26 @@ inlist2 = {'science':'J034151_L2_combined.fits',
 
 
 
-def telluric_correction(inlist, interactive=True):
+def telluric_correction(inlist, interactive=True, fileformat='fits'):
 
 
     # Read in spectra
-
     science = sod.SpecOneD()
-    science.read_from_fits(inlist['science'])
-
     tellstar = sod.SpecOneD()
-    tellstar.read_from_fits(inlist['tellstar'])
+    if fileformat=='fits':
+        science.read_from_fits(inlist['science'])
+        tellstar.read_from_fits(inlist['tellstar'])
+    elif fileformat=='hdf':
+        science.read_from_hdf(inlist['science'])
+        tellstar.read_from_hdf(inlist['tellstar'])
+
+    print(tellstar.flux_err, science.flux_err)
 
     tellstarmodel = sod.SpecOneD()
     tellstarmodel.read_from_fits(inlist['tellstarmodel'])
     tellstarmodel.flux_err = np.zeros(len(tellstarmodel.dispersion))
 
-    print (tellstar.flux_err, tellstarmodel.flux_err, science.flux_err)
+
 
     # Deredden science and telluric spectrum
 
@@ -72,21 +76,28 @@ def telluric_correction(inlist, interactive=True):
                      inplace=True)
 
 
+
+
     # 1) Build telluric
 
     if interactive:
         app = inter.QtWidgets.QApplication(sys.argv)
-        form = inter.SpecOneDGui(spec_list=[tellstar, tellstarmodel], mode="divide")
+        form = inter.SpecOneDGui(spec_list=[tellstar, tellstarmodel],
+                                 mode="divide", fileformat='hdf',
+                                 copy_flux_err='first')
         form.show()
         app.exec_()
 
     # Read in telluric correction
     tellcorr = sod.SpecOneD()
-    tellcorr.read_from_fits(inlist['tellcorr_name'])
-
+    if fileformat=='fits':
+        tellcorr.read_from_fits(inlist['tellcorr_name'])
+    elif fileformat=='hdf':
+        tellcorr.read_from_hdf(inlist['tellcorr_name'])
     if interactive:
         app = inter.QtWidgets.QApplication(sys.argv)
-        form = inter.SpecOneDGui(spec_list=[science, tellcorr], mode="divide")
+        form = inter.SpecOneDGui(spec_list=[science, tellcorr], mode="divide",
+                                 fileformat='hdf', copy_flux_err='No')
         form.show()
         app.exec_()
 

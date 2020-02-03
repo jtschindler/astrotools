@@ -122,6 +122,8 @@ def vega_to_ab(mag, band_name, output_flux=False, asinh_mag=False, flux_unit='Jy
 
 
 def deredden(to_deredden, band, ext, ext_band, input_type="AB"):
+
+    # A / E(B - V) is the ratio of band extinction to reddening.
     ext_deltamag_dict = \
         {'A_V': 3.1,
          'SDSS_u': 4.239,
@@ -129,9 +131,9 @@ def deredden(to_deredden, band, ext, ext_band, input_type="AB"):
          'SDSS_r': 2.285,
          'SDSS_i': 1.698,
          'SDSS_z': 1.263,
-         'TMASS_j': 0.709,
-         'TMASS_h': 0.449,
-         'TMASS_k': 0.302,
+         'TMASS_j': 0.723,
+         'TMASS_h': 0.460,
+         'TMASS_k': 0.310,
          'WISE_w1': 0.189,
          'WISE_w2': 0.146,
          'WISE_w3': 0.0,
@@ -142,7 +144,10 @@ def deredden(to_deredden, band, ext, ext_band, input_type="AB"):
          'PS_r': 2.271,
          'PS_i': 1.682,
          'PS_z': 1.322,
-         'PS_y': 1.087
+         'PS_y': 1.087,
+         'UKIRT_J': 0.709,
+         'UKIRT_H': 0.449,
+         'UKIRT_K': 0.302,
          }
 
     extinction = ext/ext_deltamag_dict[ext_band]*ext_deltamag_dict[band]
