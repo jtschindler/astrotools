@@ -140,7 +140,8 @@ def load_qso_fit(foldername):
                   'gaussian_fwhm_z': specmod.gaussian_fwhm_z,
                   'balmer_continuum_model': specmod.balmer_continuum_model,
                   'power_law_at_2500A_plus_BC':
-                      specmod.power_law_at_2500A_plus_BC}
+                      specmod.power_law_at_2500A_plus_BC,
+                  'CIII_model_func': specmod.CIII_model_func}
 
     cont_models = glob.glob(foldername + '/cont_*.json')
 
@@ -391,11 +392,11 @@ def calc_fwhm_from_line(dispersion, flux):
         print('[WARNING] Found {} roots. Cannot determine FWHM'.format(len(
             roots)))
         print('[WARNING] FWHM set to 0')
-        plt.cla()
-        plt.plot(dispersion, flux - np.max(flux) / 2., 'r-', lw=2)
-        plt.plot(dispersion, dispersion*0, 'k--')
-        plt.show()
-        return 0
+        # plt.cla()
+        # plt.plot(dispersion, flux - np.max(flux) / 2., 'r-', lw=2)
+        # plt.plot(dispersion, dispersion*0, 'k--')
+        # plt.show()
+        return [np.NaN]
     else:
 
         max_idx = np.where(flux == np.max(flux))
@@ -1180,11 +1181,12 @@ def fit_emcee(filename, foldername, redshift):
 
 
 def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
-                    line_prefixes, line_names, continuum_wavelengths, cosmology,
-                    n_samples=100,
-                    save_result_plots=True, resolution=None,
-                    mgII_feII_prefix=None,
-                    mgII_feII_int_range=None, verbosity=0):
+                        line_prefixes, line_names, continuum_wavelengths, cosmology,
+                        n_samples=100, cont_fit_weights=True,
+                        line_fit_weights=True,
+                        save_result_plots=True, resolution=None,
+                        mgII_feII_prefix=None,
+                        mgII_feII_int_range=None, verbosity=0):
 
 
     in_dict = load_qso_fit(foldername)
@@ -1287,7 +1289,7 @@ def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
         # 3 a) fit the continuum, then fit the lines -> record the results in
         # arrays
 
-        in_dict['fit_with_weights'] = False
+        in_dict['fit_with_weights'] = cont_fit_weights
         if in_dict['fit_with_weights']:
             cont_fit_result = cont_model.fit(idx_spec.flux[cont_m],
                                              cont_model_pars,
@@ -1304,7 +1306,7 @@ def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
 
         res_flux = idx_spec.flux - cont_fit_flux
 
-        in_dict['fit_with_weights'] = True
+        in_dict['fit_with_weights'] = line_fit_weights
         if in_dict['fit_with_weights']:
             line_fit_result = line_model.fit(res_flux[line_m],
                                              line_model_pars,
@@ -1393,7 +1395,7 @@ def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
             upper = result_df.loc['upper', col]
 
             ax.hist(raw_df.loc[:, col], bins=round(n_samples / 2.))
-            ax.axvline(median, c='k', ls='-', lw=2)
+            ax.axvline(median, c='k', ls='--', lw=2)
             ax.axvline(lower, c='k', ls='-.', lw=2)
             ax.axvline(upper, c='k', ls='-.', lw=2)
 
@@ -1614,7 +1616,7 @@ def analyse(spec,
 
         fwhm = calc_fwhm_from_line(dispersion, line_flux)
 
-        if resolution is not None:
+        if resolution is not None and fwhm[0] is not np.NaN:
             if verbosity > 1:
                 print('[INFO] Correcting FWHM for provided resolution.')
             fwhm = np.sqrt(fwhm**2-resolution**2)

@@ -452,8 +452,8 @@ def load_template_model(template_filename=None, fwhm=None, redshift=None,
 # Specialized Quasar Models
 # ------------------------------------------------------------------------------
 
-def CIII_model_func(x, z_cIII,
-                          amp_cIII, fwhm_km_s_cIII, shift_km_s_cIII,
+def CIII_model_func(x, z, cen, cen_alIII, cen_siIII,
+                          amp, fwhm_km_s, shift_km_s,
                           amp_alIII, fwhm_km_s_alIII, shift_km_s_alIII,
                           amp_siIII, fwhm_km_s_siIII, shift_km_s_siIII):
     """
@@ -483,19 +483,19 @@ def CIII_model_func(x, z_cIII,
     :return: float
     """
 
-    cIII_cen = 1908.73 * (1 + z_cIII)
-    siIII_cen = 1892.03 * (1 + z_cIII)
-    alIII_cen = 1857.40 * (1 + z_cIII)
+    cIII_cen = cen * (1 + z)
+    siIII_cen = cen_alIII * (1 + z)
+    alIII_cen = cen_siIII * (1 + z)
 
-    cIII_delta_cen = shift_km_s_cIII / c_km_s * cIII_cen
+    cIII_delta_cen = shift_km_s / c_km_s * cIII_cen
     siIII_delta_cen = shift_km_s_siIII / c_km_s * siIII_cen
     alIII_delta_cen = shift_km_s_alIII / c_km_s * alIII_cen
 
 
     central = cIII_cen + cIII_delta_cen
-    fwhm = fwhm_km_s_cIII / c_km_s * central
+    fwhm = fwhm_km_s / c_km_s * central
     sigma = fwhm / np.sqrt(8 * np.log(2))
-    gauss_cIII = (amp_cIII / (np.sqrt(2 * np.pi) * sigma)) * np.exp(
+    gauss_cIII = (amp / (np.sqrt(2 * np.pi) * sigma)) * np.exp(
         -(x - central) ** 2 / (2 * sigma ** 2))
 
     central = siIII_cen + siIII_delta_cen
@@ -720,7 +720,7 @@ def create_line_model_HbOIII_6G(fit_z=False, redsh=0.0, flux_2500=None):
 
         params[prefixes[idx]+'amp'].set(min=1.0e-19, max=1.0e-10)
         params[prefixes[idx]+'shift_km_s'].set(vary=False, min=-200, max=200)
-        params[prefixes[idx]+'cen'].set(expr=str(central_wavs[idx])+'*(z+1)')
+        params[prefixes[idx]+'cen'].set(expr=str(central_wavs[idx]))
 
     param_list[0]['hbeta_b_' + 'fwhm_km_s'].set(min=1200, max=10000)
     param_list[1]['hbeta_n_' + 'fwhm_km_s'].set(min=100, max=1200)
@@ -779,7 +779,7 @@ def create_line_model_Hb_2G(fit_z=False, redsh=0.0, flux_2500=None):
 
         params[prefixes[idx]+'amp'].set(min=1.0e-19, max=1.0e-10)
         params[prefixes[idx]+'shift_km_s'].set(vary=False, min=-200, max=200)
-        params[prefixes[idx]+'cen'].set(expr=str(central_wavs[idx])+'*(z+1)')
+        params[prefixes[idx]+'cen'].set(expr=str(central_wavs[idx]))
 
     param_list[0]['hbeta_b_' + 'fwhm_km_s'].set(min=1200, max=10000)
     param_list[1]['hbeta_n_' + 'fwhm_km_s'].set(min=100, max=1200)
@@ -994,7 +994,56 @@ def create_line_model_CIV_1G(fit_z=False, redsh=0.0, flux_2500=None):
     return param_list, model_list
 
 
+def create_line_model_CIII_1G(fit_z=False, redsh=0.0, flux_2500=None):
+
+    prefixes = ['cIII_']
+
+    if flux_2500 is not None:
+        amplitudes = np.array([20]) * flux_2500
+    else:
+        amplitudes = np.array([20]) * 1.0E-16
+
+    widths = [2500]
+    central_wavs = [1908.73] # Vanden Berk 2001
+    shifts = [0, 0]
+
+    param_list = []
+    model_list = []
+
+    for idx, prefix in enumerate(prefixes):
+        pars = Parameters()
+
+        if fit_z:
+            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+                     vary=True)
+        else:
+            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+                     vary=False)
+
+        params, model = emission_line_model(amp=amplitudes[idx],
+                                            cen=central_wavs[idx],
+                                            wid=widths[idx],
+                                            shift=shifts[idx],
+                                            unit_type='fwhm_z',
+                                            prefix=prefix,
+                                            fit_central=True,
+                                            parameters=pars,
+                                            redsh=redsh)
+
+        param_list.append(params)
+        model_list.append(model)
+
+    param_list[0]['cIII_' + 'cen'].set(vary=False)
+    param_list[0]['cIII_' + 'amp'].set(min=1.0e-19, max=1.0e-10)
+    param_list[0]['cIII_' + 'shift_z'].set(vary=False, min=-200, max=200)
+    param_list[0]['cIII_' + 'fwhm_km_s'].set(min=1200, max=30000)
+
+
+    return param_list, model_list
+
+
 def create_line_model_CIII(fit_z=True, redsh=0.0, flux_2500=None):
+
 
     if flux_2500 is not None:
         amp_cIII = 21.19 * flux_2500
@@ -1007,21 +1056,34 @@ def create_line_model_CIII(fit_z=True, redsh=0.0, flux_2500=None):
 
     params = Parameters()
 
-    params.add('z_cIII', value=redsh, vary=fit_z)
+    params.add('cIII_cen', value=1908.73, vary=False)
+    params.add('cIII_cen_siIII', value=1892.03, vary=False)
+    params.add('cIII_cen_alIII', value=1857.40, vary=False)
 
-    params.add('amp_cIII', value=amp_cIII, vary=True)
-    params.add('amp_alIII', value=amp_alIII, vary=True)
-    params.add('amp_siIII', value=amp_siIII, vary=True)
+    if fit_z:
+        params.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05, 1),
+                 vary=True)
+    else:
+        params.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05, 1),
+                 vary=False)
 
-    params.add('fwhm_km_s_cIII', value= 2000, vary=True)
-    params.add('fwhm_km_s_alIII', value=400, vary=True)
-    params.add('fwhm_km_s_siIII', value=300, vary=True)
+    params.add('cIII_z', value=redsh, vary=True)
 
-    params.add('shift_km_s_cIII', value=0, vary=True)
-    params.add('shift_km_s_alIII', value=0, vary=True)
-    params.add('shift_km_s_siIII', value=0, vary=True)
+    params.add('cIII_amp', value=amp_cIII, vary=True, min=1e-19, max=1e-10)
+    params.add('cIII_amp_alIII', value=amp_alIII, vary=True, min=1e-19,
+               max=1e-10)
+    params.add('cIII_amp_siIII', value=amp_siIII, vary=True, min=1e-19,
+               max=1e-10)
 
-    elmodel = Model(CIII_model_func)
+    params.add('cIII_fwhm_km_s', value=2000, vary=True, min=500, max=1e+4)
+    params.add('cIII_fwhm_km_s_alIII', value=400, vary=True, min=500, max=7e+3)
+    params.add('cIII_fwhm_km_s_siIII', value=300, vary=True, min=500, max=7e+3)
+
+    params.add('cIII_shift_km_s', value=0, vary=False)
+    params.add('cIII_shift_km_s_alIII', value=0, vary=False)
+    params.add('cIII_shift_km_s_siIII', value=0, vary=False)
+
+    elmodel = Model(CIII_model_func, prefix='cIII_')
 
     return params, elmodel
 

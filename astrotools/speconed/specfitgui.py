@@ -814,7 +814,9 @@ class SpecFitGui(QMainWindow):
                       'gaussian_fwhm_km_s_z': gaussian_fwhm_km_s_z,
                       'gaussian_fwhm_z': gaussian_fwhm_z,
                       'balmer_continuum_model': balmer_continuum_model,
-                      'power_law_at_2500A_plus_BC': power_law_at_2500A_plus_BC}
+                      'power_law_at_2500A_plus_BC':
+                          power_law_at_2500A_plus_BC,
+                      'CIII_model_func': CIII_model_func}
 
         cont_models = glob.glob(foldername+'/cont_*.json')
 
@@ -2161,6 +2163,7 @@ class SpecFitGui(QMainWindow):
                            'Line model CIV (1G)',
                            'Line model CIV (2G)',
                            'Line model CIII complex (3G)',
+                           'Line model CIII complex (1G)',
                            "Line model Hbeta (6G)",
                            "Line model Hbeta (2G)",
                            'Line model HeII (1G)',
@@ -2649,6 +2652,13 @@ class SpecFitGui(QMainWindow):
                 line_params, line_model = \
                     create_line_model_CIII(fit_z=self.line_fit_z_flag,
                                            redsh=self.redshift)
+
+            elif line_model_name == "Line model CIII complex (1G)":
+
+                line_params, line_model = \
+                    create_line_model_CIII_1G(fit_z=self.line_fit_z_flag,
+                                           redsh=self.redshift)
+
 
             elif line_model_name == "Line model HeII (1G)":
 
