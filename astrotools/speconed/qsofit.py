@@ -141,6 +141,8 @@ def load_qso_fit(foldername):
                   'balmer_continuum_model': specmod.balmer_continuum_model,
                   'power_law_at_2500A_plus_BC':
                       specmod.power_law_at_2500A_plus_BC,
+                  'power_law_at_2500A_plus_flexible_BC':
+                      specmod.power_law_at_2500A_plus_flexible_BC,
                   'CIII_model_func': specmod.CIII_model_func}
 
     cont_models = glob.glob(foldername + '/cont_*.json')
@@ -263,6 +265,7 @@ def build_line_model(line_model_list, line_model_par_list,
     for idx, params in enumerate(line_model_par_list):
         # For each parameter in the model parameter set
         for jdx, p in enumerate(params):
+            print(p, params[p].vary)
             # Add parameter to full line model parameters
             line_model_pars.add(p, expr=params[p].expr,
                                 value=params[p].value,
@@ -418,6 +421,9 @@ def calc_integrated_flux(dispersion, flux, range=None):
 
     spec = sod.SpecOneD(dispersion=dispersion, flux=flux,
                         unit='f_lam')
+
+    if range is not None:
+        spec.trim_dispersion(range, inplace=True)
 
     return np.trapz(spec.flux, x=spec.dispersion)
 
@@ -1180,10 +1186,12 @@ def fit_emcee(filename, foldername, redshift):
     plt.show()
 
 
+
 def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
                         line_prefixes, line_names, continuum_wavelengths, cosmology,
                         n_samples=100, cont_fit_weights=True,
                         line_fit_weights=True,
+                        smooth = 10,
                         save_result_plots=True, resolution=None,
                         mgII_feII_prefix=None,
                         mgII_feII_int_range=None, verbosity=0):
@@ -1273,6 +1281,8 @@ def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
     # smooth spectrum
     spec.smooth(20, inplace=True)
     # ax.plot(spec.dispersion[m], spec.flux[m] * 1e+17, color='grey')
+    print("SPECTRUM RAW", len(spec.raw_dispersion), len(spec.raw_flux),
+          len(in_dict["mask_list"][0]))
     ax.plot(spec.raw_dispersion[m], spec.raw_flux[m] * 1e+17, color='grey')
     ax.plot(spec.dispersion[m], spec.flux[m] * 1e+17, color='k')
 
@@ -1284,7 +1294,9 @@ def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
         idx_spec = sod.SpecOneD(dispersion=spec.dispersion, flux=spec_idx,
                                 flux_err=spec.flux_err, unit='f_lam')
 
-        idx_spec.smooth(10, inplace=True)
+        if smooth is not False:
+            print(smooth)
+            idx_spec.smooth(smooth, inplace=True)
 
         # 3 a) fit the continuum, then fit the lines -> record the results in
         # arrays
@@ -1553,13 +1565,21 @@ def analyse(spec,
                       '(user specified)'.format(mgII_feII_int_range[0],
                                          mgII_feII_int_range[1]))
 
-        dispersion = spec.dispersion
+        mgII_feII_int_range_z = [mgII_feII_int_range[0] * (redshift + 1),
+                                 mgII_feII_int_range[1] * (redshift + 1)]
+
+        # Construct the FeII model in the dispersion range requested for
+        # analysis
+        dispersion = np.arange(mgII_feII_int_range_z[0]-100,
+                               mgII_feII_int_range_z[1]+100,
+                               0.1)
         fe_flux = build_line_flux_from_line_models(dispersion,
                                                      mgII_feII_prefix,
                                                      cont_model_list,
                                                      cont_model_par_list)
 
-        fe_fl = calc_integrated_flux(dispersion, fe_flux)
+        fe_fl = calc_integrated_flux(dispersion, fe_flux,
+                                     range=mgII_feII_int_range_z)
 
         fe_L = calc_integrated_line_luminosity_new(dispersion,
                                                  fe_flux,
@@ -1623,8 +1643,12 @@ def analyse(spec,
 
         flux_line = calc_integrated_flux(dispersion, line_flux)
 
+        # if mgII_feII_prefix is not None:
+        #     flux_line_FeII = calc_integrated_flux(dispersion, line_flux,
+        #                                           range=mgII_feII_int_range_z)
 
-        # get central wavelength from model (a bit complicated
+
+        # get central wavelength from model (a bit complicated)
         for idx, line in enumerate(line_model_list):
             if line.prefix in line_prefix_list:
                 try:

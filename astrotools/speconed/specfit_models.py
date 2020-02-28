@@ -241,6 +241,42 @@ def power_law_at_2500A_plus_BC(x, amp, slope, z, T_e, tau_BE, lambda_BE):
     return pl_flux + bc_flux
 
 
+def power_law_at_2500A_plus_flexible_BC(x, amp, slope, z, f, T_e, tau_BE,
+                                       lambda_BE):
+    """
+    Power law anchored at 2500 (Angstroem) plus a Balmer continuum model with
+    a fixed flux of 30% of the power law flux at 3645A.
+    :param x:
+    :param amp:
+    :param slope:
+    :param z:
+    :param T_e:
+    :param tau_BE:
+    :param lambda_BE:
+    :return:
+    """
+
+
+
+    pl_flux =  amp * (x / (2500. * (z + 1.))) ** slope
+
+    pl_flux_at_BE = amp * ((lambda_BE * (z + 1.)) / (2500. * (z + 1.))) ** slope
+
+
+    x = x / (1. + z)
+
+    bc_flux_at_lambda_BE = blackbody_lambda(lambda_BE, T_e).value * (
+                1. - np.exp(-tau_BE))
+
+    bc_flux = f * pl_flux_at_BE / bc_flux_at_lambda_BE * \
+              blackbody_lambda(x, T_e).value * (
+                1. - np.exp(-tau_BE * (x / lambda_BE) ** 3))
+
+    bc_flux[x >= lambda_BE] = bc_flux[x >= lambda_BE] * 0
+
+    return pl_flux + bc_flux
+
+
 # ------------------------------------------------------------------------------
 # Basic Models
 # ------------------------------------------------------------------------------
@@ -319,7 +355,7 @@ def emission_line_model(amp, cen, wid, shift, unit_type, expr_list = None,
 
         elmodel = Model(gaussian, prefix=prefix)
 
-    elif unit_type == "fhwm":
+    elif unit_type == "fwhm":
 
         params.add(prefix+'fwhm', value=wid, vary=fit_width)
 
@@ -695,10 +731,12 @@ def create_line_model_HbOIII_6G(fit_z=False, redsh=0.0, flux_2500=None):
         pars = Parameters()
 
         if fit_z:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                 1),
                      vary=True)
         else:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                 1),
                      vary=False)
 
         params, model = emission_line_model(amp=amplitudes[idx],
@@ -718,19 +756,84 @@ def create_line_model_HbOIII_6G(fit_z=False, redsh=0.0, flux_2500=None):
 
     for idx,params in enumerate(param_list):
 
+        params[prefixes[idx] + 'amp'].set(min=redsh * 0.98, max=max(redsh *
+                                                                    1.02, 1),
+                     vary=True)
         params[prefixes[idx]+'amp'].set(min=1.0e-19, max=1.0e-10)
         params[prefixes[idx]+'shift_km_s'].set(vary=False, min=-200, max=200)
         params[prefixes[idx]+'cen'].set(expr=str(central_wavs[idx]))
 
-    param_list[0]['hbeta_b_' + 'fwhm_km_s'].set(min=1200, max=10000)
-    param_list[1]['hbeta_n_' + 'fwhm_km_s'].set(min=100, max=1200)
-    param_list[2]['OIII_a1_' + 'fwhm_km_s'].set(min=100, max=1200)
-    param_list[4]['OIII_b1_' + 'fwhm_km_s'].set(min=100, max=1200)
-    param_list[3]['OIII_a2_' + 'fwhm_km_s'].set(min=500, max=2500)
-    param_list[5]['OIII_b2_' + 'fwhm_km_s'].set(min=500, max=2500)
+    param_list[0]['hbeta_b_' + 'fwhm_km_s'].set(min=1200, max=20000)
+    param_list[1]['hbeta_n_' + 'fwhm_km_s'].set(min=100, max=8000)
+    param_list[2]['OIII_a1_' + 'fwhm_km_s'].set(min=100, max=2500)
+    param_list[4]['OIII_b1_' + 'fwhm_km_s'].set(min=100, max=2500)
+    param_list[3]['OIII_a2_' + 'fwhm_km_s'].set(min=500, max=6500)
+    param_list[5]['OIII_b2_' + 'fwhm_km_s'].set(min=500, max=6500)
 
-    param_list[3]['OIII_a2_' + 'shift_km_s'].set(vary=True, min=-600, max=200)
-    param_list[5]['OIII_b2_' + 'shift_km_s'].set(vary=True, min=-600, max=200)
+    # param_list[3]['OIII_a2_' + 'shift_km_s'].set(vary=True, min=-600, max=200)
+    # param_list[5]['OIII_b2_' + 'shift_km_s'].set(vary=True, min=-600, max=200)
+
+    return param_list, model_list
+
+
+def create_line_model_HbOIII_4G(fit_z=False, redsh=0.0, flux_2500=None):
+
+    prefixes = ['hbeta_b_', 'hbeta_n_', 'OIII_a_', 'OIII_b_']
+    if flux_2500 is not None:
+        amplitudes = np.array([20, 2, 5, 5]) * flux_2500
+    else:
+        amplitudes = np.array([20, 2, 5, 5]) * 1.0E-16
+
+    widths = [2500, 900, 1200, 1200]
+    central_wavs = [4861, 4861, 4960.30, 5008.24]
+    shifts = [0, 0, 0, 0]
+
+    param_list = []
+    model_list = []
+
+
+    for idx, prefix in enumerate(prefixes):
+
+        pars = Parameters()
+
+        if fit_z:
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                 1),
+                     vary=True)
+        else:
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                1),
+                     vary=False)
+
+        params, model = emission_line_model(amp=amplitudes[idx],
+                                            cen=central_wavs[idx],
+                                            wid=widths[idx],
+                                            shift=shifts[idx],
+                                            unit_type='fwhm_km_s_z',
+                                            prefix=prefix,
+                                            fit_central=True,
+                                            parameters=pars,
+                                            redsh=redsh)
+
+
+        param_list.append(params)
+        model_list.append(model)
+
+
+    for idx,params in enumerate(param_list):
+
+        params[prefixes[idx] + 'amp'].set(min=redsh * 0.98, max=max(redsh *
+                                                                    1.02, 1),
+                     vary=True)
+        params[prefixes[idx]+'amp'].set(min=1.0e-19, max=1.0e-10)
+        params[prefixes[idx]+'shift_km_s'].set(vary=False, min=-200, max=200)
+        params[prefixes[idx]+'cen'].set(expr=str(central_wavs[idx]))
+
+    param_list[0]['hbeta_b_' + 'fwhm_km_s'].set(min=1200, max=20000)
+    param_list[1]['hbeta_n_' + 'fwhm_km_s'].set(min=100, max=8000)
+    param_list[2]['OIII_a_' + 'fwhm_km_s'].set(min=100, max=6000)
+    param_list[3]['OIII_b_' + 'fwhm_km_s'].set(min=500, max=6000)
+
 
     return param_list, model_list
 
@@ -755,10 +858,12 @@ def create_line_model_Hb_2G(fit_z=False, redsh=0.0, flux_2500=None):
         pars = Parameters()
 
         if fit_z:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                 1),
                      vary=True)
         else:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                 1),
                      vary=False)
 
         params, model = emission_line_model(amp=amplitudes[idx],
@@ -781,8 +886,8 @@ def create_line_model_Hb_2G(fit_z=False, redsh=0.0, flux_2500=None):
         params[prefixes[idx]+'shift_km_s'].set(vary=False, min=-200, max=200)
         params[prefixes[idx]+'cen'].set(expr=str(central_wavs[idx]))
 
-    param_list[0]['hbeta_b_' + 'fwhm_km_s'].set(min=1200, max=10000)
-    param_list[1]['hbeta_n_' + 'fwhm_km_s'].set(min=100, max=1200)
+    param_list[0]['hbeta_b_' + 'fwhm_km_s'].set(min=1200, max=20000)
+    param_list[1]['hbeta_n_' + 'fwhm_km_s'].set(min=100, max=8000)
 
     return param_list, model_list
 
@@ -827,7 +932,8 @@ def create_line_model_MgII_2G(fit_z=False, redsh=0.0, flux_2500=None):
         param_list.append(params)
         model_list.append(model)
 
-
+    param_list[0]['mgII_b_' + 'cen'].set(vary=False)
+    param_list[1]['mgII_n_' + 'cen'].set(vary=False)
 
     param_list[0]['mgII_b_' + 'amp'].set(min=1.0e-19, max=1.0e-10)
     param_list[0]['mgII_b_' + 'shift_km_s'].set(vary=False, min=-200, max=200)

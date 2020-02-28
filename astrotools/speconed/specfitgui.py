@@ -816,6 +816,8 @@ class SpecFitGui(QMainWindow):
                       'balmer_continuum_model': balmer_continuum_model,
                       'power_law_at_2500A_plus_BC':
                           power_law_at_2500A_plus_BC,
+                      'power_law_at_2500A_plus_flexible_BC':
+                          power_law_at_2500A_plus_flexible_BC,
                       'CIII_model_func': CIII_model_func}
 
         cont_models = glob.glob(foldername+'/cont_*.json')
@@ -1093,6 +1095,7 @@ class SpecFitGui(QMainWindow):
         self.mask_combobox.addItem("X-SHOOTER HighZ continuum windows")
         self.mask_combobox.addItem("X-SHOOTER HighZ line windows")
         self.mask_combobox.addItem("QSO continuum windows (VP06)")
+        self.mask_combobox.addItem("QSO continuum windows")
         self.mask_combobox.addItem("QSO MgII cont/fe windows (Shen11)")
         self.mask_combobox.addItem("QSO Hbeta cont/fe windows (Shen11)")
         self.mask_combobox.addItem("QSO Halpha cont/fe windows (Shen11)")
@@ -1312,6 +1315,14 @@ class SpecFitGui(QMainWindow):
                                                      [2480, 2675],
                                                      [2925, 3100]])
 
+        qso_continuum_windows = np.array([
+                                          [1350, 1360],
+                                          [1445, 1465],
+                                          [1700, 1705],
+                                          [2155, 2400],
+                                          [2480, 2675],
+                                          [2925, 3100]])
+
         xshooter_surge_line_windows = np.array([[2700, 2900],
                                                 [1470, 1600]])
 
@@ -1349,6 +1360,9 @@ class SpecFitGui(QMainWindow):
             self.active_mask = 0
         elif mask_preset_name == "X-SHOOTER HighZ continuum windows":
             masks_to_apply = (1. + redsh) * xshooter_surge_continuum_windows
+            self.active_mask = 1
+        elif mask_preset_name == "QSO continuum windows":
+            masks_to_apply = (1. + redsh) * qso_continuum_windows
             self.active_mask = 1
         elif mask_preset_name == "X-SHOOTER HighZ line windows":
             masks_to_apply = (1. + redsh) * xshooter_surge_line_windows
@@ -1434,8 +1448,10 @@ class SpecFitGui(QMainWindow):
         self.cont_fit_box.addItem("Power Law")
         self.cont_fit_box.addItem("Power Law (2500A)")
         self.cont_fit_box.addItem("Power Law (2500A + BC 30%)")
+        self.cont_fit_box.addItem("Power Law (2500A + flexible BC)")
         self.cont_fit_box.addItem("Balmer Continuum")
         self.cont_fit_box.addItem("Tsuzuki06")
+        self.cont_fit_box.addItem("Vestergaard 01")
         self.cont_fit_box.addItem("Simqso Fe template")
         self.cont_fit_box.addItem("Full subdivided iron template")
         self.cont_fit_box.addItem("Iron template 1200-2200")
@@ -1901,10 +1917,57 @@ class SpecFitGui(QMainWindow):
                 cont_model = Model(power_law_at_2500A_plus_BC, prefix=prefix)
 
 
-            elif cont_model_name == "Balmer Continuum":
+            elif cont_model_name == "Power Law (2500A + flexible BC)":
 
                 cont_params = Parameters()
-                cont_params.add(prefix+'z', value=0, min=0, max=1000, vary=True)
+                if hasattr(self, 'flux_2500'):
+                    amp_guess = self.flux_2500
+                else:
+                    amp_guess = 2.5e-10
+                if hasattr(self, 'redshift'):
+                    redsh_guess = self.redshift
+                else:
+                    redsh_guess = 3.0
+
+                cont_params.add('z', value=redsh_guess, min=0, max=1080,
+                                vary=False)
+
+                cont_params.add(prefix + 'z', value=redsh_guess, min=0,
+                                max=1080, vary=False, expr='z')
+
+                cont_params.add(prefix + 'amp', value=amp_guess,
+                                )
+                cont_params.add(prefix + 'slope', value=-1.5, min=-2.5,
+                                max=-0.3)
+
+                cont_params.add(prefix + 'f', value=0.1, min=0.0,
+                                max=0.4, vary=True)
+
+                cont_params.add(prefix + 'T_e', value=15000, min=10000,
+                                max=20000, vary=False)
+                cont_params.add(prefix + 'tau_BE', value=1.0, min=0.1, max=2.0,
+                                vary=False)
+
+                cont_params.add(prefix + 'lambda_BE', value=3646, vary=False)
+
+                cont_model = Model(power_law_at_2500A_plus_flexible_BC, prefix=prefix)
+
+
+            elif cont_model_name == "Balmer Continuum":
+
+                if hasattr(self, 'redshift'):
+                    redsh_guess = self.redshift
+                else:
+                    redsh_guess = 3.0
+
+                cont_params = Parameters()
+
+                cont_params.add('z', value=redsh_guess, min=0, max=1080,
+                                vary=False)
+
+                cont_params.add(prefix + 'z', value=redsh_guess, min=0,
+                                max=1080, vary=False, expr='z')
+
                 cont_params.add(prefix+'flux_BE', value=1, min=0, max=10, vary=True)
                 cont_params.add(prefix+'T_e', value=15000, min=10000, max=20000, vary=True)
                 cont_params.add(prefix+'tau_BE', value=0.5, min=0.1, max=2.0, vary=True)
@@ -1917,6 +1980,13 @@ class SpecFitGui(QMainWindow):
                 cont_model, cont_params = load_template_model(
                     template_filename=templ_fname,
                     prefix=prefix)
+
+            elif cont_model_name == "Vestergaard 01":
+                templ_fname = "Fe_UVtemplt_A.asc"
+                cont_model, cont_params = load_template_model(
+                    template_filename=templ_fname,
+                    prefix=prefix)
+
 
             elif cont_model_name == "Simqso Fe template":
                 templ_fname = 'Fe_UVOPT_V01_T06_BR92.asc'
@@ -2165,6 +2235,7 @@ class SpecFitGui(QMainWindow):
                            'Line model CIII complex (3G)',
                            'Line model CIII complex (1G)',
                            "Line model Hbeta (6G)",
+                           "Line model Hbeta (4G)",
                            "Line model Hbeta (2G)",
                            'Line model HeII (1G)',
                            'Line model SiIV (1G)',
@@ -2676,6 +2747,12 @@ class SpecFitGui(QMainWindow):
 
                 line_params, line_model = \
                     create_line_model_HbOIII_6G(fit_z=self.line_fit_z_flag,
+                                               redsh=self.redshift)
+
+            elif line_model_name == "Line model Hbeta (4G)":
+
+                line_params, line_model = \
+                    create_line_model_HbOIII_4G(fit_z=self.line_fit_z_flag,
                                                redsh=self.redshift)
 
 

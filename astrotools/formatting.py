@@ -109,13 +109,17 @@ def convert_dmsdec2decdeg(dec_dms,delimiter=':'):
         dec_minutes = float(dec_dms[4:6])
         dec_seconds = float(dec_dms[7:12])
 
-    is_positive = dec_degrees >= 0
+    print(dec_dms[0])
+
+    if dec_dms[0] == '-':
+        is_positive = False
+    else:
+        is_positive = True
+
     dec = abs(dec_degrees) + dec_minutes/60. + dec_seconds/3600.
 
     if is_positive is False:
         dec = -dec
-
-    print (dec_degrees, dec_minutes, dec_seconds, dec)
 
     return dec
 
