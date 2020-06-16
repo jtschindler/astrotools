@@ -398,8 +398,53 @@ class QLF:
         self.z = z
 
 
+    def setup_qlf_K19(self):
+        self.name = "K2019"
+        self.band = "M1450"  # converted to i-band, see the update function
+        self.band_wavelength = 145  # in nm
+        self.type = 0  # 0 = magnitudes, 1 = luminosities
+        self.k_correction = 0  # k-corrects magnitude to z=0
+        # self.k_correction = - 0.5964 # k-corrects magnitude to z=0
+
+        self.z_min = 0.3  # lower redshift limit of data for the QLF fit
+        self.z_max = 10.0  # upper redshift limit of data for the QLF fit
+
+        self.x_max = -11.7812
+        self.x_min = -38.7701
+
+        self.x = -25  # default magnitude value
+        self.z = 1.0  # default redshift value
+
+        # best fit values
+        self.c0_0 = -6.942
+        self.c0_1 = 0.629
+        self.c0_2 = -0.086
+        self.c1_0 = -15.038
+        self.c1_1 = -7.046
+        self.c1_2 = 0.772
+        self.c1_3 = -0.030
+        self.c2_0 = -2.888
+        self.c2_1 = -0.383
+        self.c3_0 = -1.602
+        self.c3_1 = -0.082
 
 
+
+
+    def update_qlf_K19(self, M1450, z):
+
+        x = 1 + z
+
+        logPhiStar = np.polynomial.chebyshev.chebval(x, [self.c0_0,
+                                                         self.c0_1, self.c0_2])
+        self.phi_star = np.pow(10, logPhiStar)
+
+        self.x_star = np.polynomial.chebyshev.chebval(x, [self.c1_0,
+                                                           self.c1_1, self.c1_2, self.c1_3])
+
+        self.alpha = np.polynomial.chebyshev.chebval(x, [self.c2_0, self.c2_1])
+
+        self.beta = self.c3_0 + self.c3_1 * x
 
 # Ro13 = QLF()
 # Ro13.setup_qlf_Ro13()

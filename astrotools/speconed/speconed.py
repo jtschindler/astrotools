@@ -682,10 +682,11 @@ class SpecOneD(object):
         range.
 
         If the primary spectrum overlaps fully with the secondary spectrum the
-        dispersion of the secondary will be interpolated to the primary
-        dispersion.
+        dispersion of the secondary will be interpolated/resampled to the
+        primary dispersion.
         If the secondary spectrum overlaps fully with the primary, the primary
-        spectrum will be interpolated on the secondary spectrum resolution, but
+        spectrum will be interpolated/resampled on the secondary spectrum
+        resolution, but
         this happens only if 'force==True' and 'match_secondary==False'.
         If there is partial overlap between the spectra and 'force==True'
         the secondary spectrum will be interpolated to match the
@@ -801,7 +802,7 @@ class SpecOneD(object):
 
         if not np.array_equal(s_one.dispersion, s_two.dispersion):
             print ("Warning: Dispersion does not match.")
-            print ("Warning: Flux will be interpolated.")
+            print ("Warning: Flux will be interpolated/resampled.")
 
             s_one.match_dispersions(s_two, force=force,
                                    method=method)

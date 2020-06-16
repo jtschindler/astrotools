@@ -1457,6 +1457,7 @@ class SpecFitGui(QMainWindow):
         self.cont_fit_box.addItem("Iron template 1200-2200")
         self.cont_fit_box.addItem("Iron template 1200-2200 (cont.)")
         self.cont_fit_box.addItem("Iron template 2200-3500 (T06)")
+        self.cont_fit_box.addItem("Iron template 2200-3500 (V01)")
         self.cont_fit_box.addItem("Iron template 2200-3500 (T06, cont.)")
         self.cont_fit_box.addItem("Iron template 2200-3500 (V01, cont.)")
         self.cont_fit_box.addItem("Iron template 3700-5600")
@@ -2007,7 +2008,9 @@ class SpecFitGui(QMainWindow):
 
                 if self.redshift is not None:
                     cont_model, cont_params = subdivided_iron_template(
-                        redshift=self.redshift, flux_2500=self.flux_2500)
+                        redshift=self.redshift, flux_2500=self.flux_2500,
+                    templ_list=['UV01', 'UV02', 'UV03', 'UV04', 'UV05',
+                                'UV06', 'OPT01', 'OPT02', 'OPT03'])
 
 
             elif cont_model_name == "Iron template 1200-2200":
@@ -2023,6 +2026,13 @@ class SpecFitGui(QMainWindow):
                     cont_model, cont_params = subdivided_iron_template(
                         redshift=self.redshift, flux_2500=self.flux_2500,
                         templ_list=['UV04', 'UV05', 'UV06'])
+
+            elif cont_model_name == "Iron template 2200-3500 (V01)":
+
+                if self.redshift is not None:
+                    cont_model, cont_params = subdivided_iron_template(
+                        redshift=self.redshift, flux_2500=self.flux_2500,
+                        templ_list=['UV04_V01', 'UV05_V01', 'UV06_V01'])
 
             elif cont_model_name == "Iron template 3700-5600":
 
@@ -2183,6 +2193,9 @@ class SpecFitGui(QMainWindow):
         m = np.logical_and(self.in_dict["mask_list"][1], spec.mask)
 
         if self.fit_with_weights:
+            print(spec.flux[np.isnan(spec.flux)])
+            weights = 1./spec.flux_err[m]**2
+            print(weights[np.isnan(weights)])
             # Fitting with weights
             self.cont_fit_result = self.cont_model.fit(spec.flux[m],
                                                        self.cont_model_pars,
@@ -2237,6 +2250,8 @@ class SpecFitGui(QMainWindow):
                            "Line model Hbeta (6G)",
                            "Line model Hbeta (4G)",
                            "Line model Hbeta (2G)",
+                           "Line model Halpha (3G)",
+                           "Line model Halpha (2G)",
                            'Line model HeII (1G)',
                            'Line model SiIV (1G)',
                            'Iron template CIV',
@@ -2762,7 +2777,15 @@ class SpecFitGui(QMainWindow):
                     create_line_model_Hb_2G(fit_z=self.line_fit_z_flag,
                                                redsh=self.redshift)
 
+            elif line_model_name == "Line model Halpha (2G)":
+                line_params, line_model = \
+                    create_line_model_Ha_2G(fit_z=self.line_fit_z_flag,
+                                               redsh=self.redshift)
 
+            elif line_model_name == "Line model Halpha (3G)":
+                line_params, line_model = \
+                    create_line_model_Ha_3G(fit_z=self.line_fit_z_flag,
+                                               redsh=self.redshift)
 
             elif line_model_name == "M: Voigt Profile":
                 line_model = VoigtModel(prefix=prefix)

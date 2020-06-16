@@ -520,8 +520,8 @@ def CIII_model_func(x, z, cen, cen_alIII, cen_siIII,
     """
 
     cIII_cen = cen * (1 + z)
-    siIII_cen = cen_alIII * (1 + z)
-    alIII_cen = cen_siIII * (1 + z)
+    siIII_cen = cen_siIII * (1 + z)
+    alIII_cen = cen_alIII * (1 + z)
 
     cIII_delta_cen = shift_km_s / c_km_s * cIII_cen
     siIII_delta_cen = shift_km_s_siIII / c_km_s * siIII_cen
@@ -637,6 +637,31 @@ def subdivided_iron_template(fwhm=None, redshift=None, flux_2500=None,
             redshift=redshift,
             prefix='OPT03_', flux_2500=flux_2500, wav_limits=[5100, 5600],
             norm_wavelength=5200)
+        param_list.append(templ_params)
+        model_list.append(templ_model)
+    # Vestergaard templates
+    if 'UV04_V01' in templ_list or not templ_list:
+        # 2200-2660 Tsuzuki 2006
+        templ_model, templ_params = load_template_model(
+            template_filename='Fe_UVtemplt_A.asc', fwhm=fwhm, redshift=redshift,
+            prefix='UV04V01_', flux_2500=flux_2500, wav_limits=[2200, 2660],
+            norm_wavelength=2500)
+        param_list.append(templ_params)
+        model_list.append(templ_model)
+    if 'UV05_V01' in templ_list or not templ_list:
+        # 2660-3000 Tsuzuki 2006
+        templ_model, templ_params = load_template_model(
+            template_filename='Fe_UVtemplt_A.asc', fwhm=fwhm, redshift=redshift,
+            prefix='UV05V01_', flux_2500=flux_2500, wav_limits=[2660, 3000],
+            norm_wavelength=2850)
+        param_list.append(templ_params)
+        model_list.append(templ_model)
+    if 'UV06_V01' in templ_list or not templ_list:
+        # 3000-3500 Tsuzuki 2006
+        templ_model, templ_params = load_template_model(
+            template_filename='Fe_UVtemplt_A.asc', fwhm=fwhm, redshift=redshift,
+            prefix='UV06V01_', flux_2500=flux_2500, wav_limits=[3000, 3500],
+            norm_wavelength=3250)
         param_list.append(templ_params)
         model_list.append(templ_model)
 
@@ -890,6 +915,117 @@ def create_line_model_Hb_2G(fit_z=False, redsh=0.0, flux_2500=None):
     param_list[1]['hbeta_n_' + 'fwhm_km_s'].set(min=100, max=8000)
 
     return param_list, model_list
+
+
+
+def create_line_model_Ha_2G(fit_z=False, redsh=0.0, flux_2500=None):
+
+    prefixes = ['halpha_b_', 'halpha_n_']
+    if flux_2500 is not None:
+        amplitudes = np.array([20, 2]) * flux_2500
+    else:
+        amplitudes = np.array([20, 2]) * 1.0E-16
+
+    widths = [10000, 5000]
+    central_wavs = [6564.61, 6564.61]
+    shifts = [0, 0]
+
+    param_list = []
+    model_list = []
+
+    for idx, prefix in enumerate(prefixes):
+
+        pars = Parameters()
+
+        if fit_z:
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                 1),
+                     vary=True)
+        else:
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                 1),
+                     vary=False)
+
+        params, model = emission_line_model(amp=amplitudes[idx],
+                                            cen=central_wavs[idx],
+                                            wid=widths[idx],
+                                            shift=shifts[idx],
+                                            unit_type='fwhm_km_s_z',
+                                            prefix=prefix,
+                                            fit_central=True,
+                                            parameters=pars,
+                                            redsh=redsh)
+
+        param_list.append(params)
+        model_list.append(model)
+
+
+    for idx,params in enumerate(param_list):
+
+        params[prefixes[idx]+'amp'].set(min=1.0e-19, max=1.0e-10)
+        params[prefixes[idx]+'shift_km_s'].set(vary=False, min=-200, max=200)
+        params[prefixes[idx]+'cen'].set(expr=str(central_wavs[idx]))
+
+    param_list[0]['halpha_b_' + 'fwhm_km_s'].set(min=1200, max=30000)
+    param_list[1]['halpha_n_' + 'fwhm_km_s'].set(min=100, max=10000)
+
+    return param_list, model_list
+
+
+def create_line_model_Ha_3G(fit_z=False, redsh=0.0, flux_2500=None):
+
+    prefixes = ['halpha_a_', 'halpha_b_', 'halpha_n_']
+    if flux_2500 is not None:
+        amplitudes = np.array([10, 20, 2]) * flux_2500
+    else:
+        amplitudes = np.array([10, 20, 2]) * 1.0E-16
+
+    widths = [10000, 5000, 500]
+    central_wavs = [6564.61, 6564.61, 6564.61]
+    shifts = [0, 0, 0]
+
+    param_list = []
+    model_list = []
+
+    for idx, prefix in enumerate(prefixes):
+
+        pars = Parameters()
+
+        if fit_z:
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                 1),
+                     vary=True)
+        else:
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                 1),
+                     vary=False)
+
+        params, model = emission_line_model(amp=amplitudes[idx],
+                                            cen=central_wavs[idx],
+                                            wid=widths[idx],
+                                            shift=shifts[idx],
+                                            unit_type='fwhm_km_s_z',
+                                            prefix=prefix,
+                                            fit_central=True,
+                                            parameters=pars,
+                                            redsh=redsh)
+
+        param_list.append(params)
+        model_list.append(model)
+
+
+    for idx,params in enumerate(param_list):
+
+        params[prefixes[idx]+'amp'].set(min=1.0e-19, max=1.0e-10)
+        params[prefixes[idx]+'shift_km_s'].set(vary=False, min=-200, max=200)
+        params[prefixes[idx]+'cen'].set(expr=str(central_wavs[idx]))
+
+    param_list[0]['halpha_a_' + 'fwhm_km_s'].set(min=1200, max=30000)
+    param_list[1]['halpha_b_' + 'fwhm_km_s'].set(min=100, max=10000)
+    param_list[2]['halpha_n_' + 'fwhm_km_s'].set(min=50, max=2000)
+
+    return param_list, model_list
+
 
 
 def create_line_model_MgII_2G(fit_z=False, redsh=0.0, flux_2500=None):

@@ -73,8 +73,8 @@ def convert_hmsra2decdeg(ra_hms, delimiter=':'):
         ra_minutes = float(ra_hms[3:5])
         ra_seconds = float(ra_hms[6:12])
 
-    print(ra_hours, ra_minutes, ra_seconds)
-    print((ra_hours + ra_minutes/60. + ra_seconds/3600.) * 15.)
+    # print(ra_hours, ra_minutes, ra_seconds)
+    # print((ra_hours + ra_minutes/60. + ra_seconds/3600.) * 15.)
 
     return (ra_hours + ra_minutes/60. + ra_seconds/3600.) * 15.
 
@@ -104,12 +104,12 @@ def convert_dmsdec2decdeg(dec_dms,delimiter=':'):
         dec_degrees = float(dec_dms[0:3])
         dec_minutes = float(dec_dms[3:5])
         dec_seconds = float(dec_dms[5:10])
-    if delimiter ==':':
-        dec_degrees = float(dec_dms[0:3])
-        dec_minutes = float(dec_dms[4:6])
-        dec_seconds = float(dec_dms[7:12])
+    if delimiter is not None:
+        dec_degrees = float(dec_dms.split(delimiter)[0])
+        dec_minutes = float(dec_dms.split(delimiter)[1])
+        dec_seconds = float(dec_dms.split(delimiter)[2])
 
-    print(dec_dms[0])
+    # print(dec_dms[0])
 
     if dec_dms[0] == '-':
         is_positive = False

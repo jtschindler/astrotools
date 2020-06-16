@@ -394,7 +394,7 @@ def calc_fwhm_from_line(dispersion, flux):
     if len(roots) > 2 or len(roots) < 2:
         print('[WARNING] Found {} roots. Cannot determine FWHM'.format(len(
             roots)))
-        print('[WARNING] FWHM set to 0')
+        print('[WARNING] FWHM set to NaN')
         # plt.cla()
         # plt.plot(dispersion, flux - np.max(flux) / 2., 'r-', lw=2)
         # plt.plot(dispersion, dispersion*0, 'k--')
@@ -533,6 +533,64 @@ def calc_QSO_Lbol_from_L3000(L3000):
     return L3000*5.15
 
 
+
+def calc_QSO_Lbol_Ne19(L_wav, wav):
+    """
+    Derive bolometric luminosities for quasars using the Netzer 2019 bolometric
+    corrections. Values are taken from Table 1 in Netzer 2019.
+    :param L_wav:
+    :param wav:
+    :return:
+    """
+
+    if wav in [1400, 3000, 5100]:
+
+        if wav == 1400:
+            c = 7
+            d = -0.1
+        elif wav == 3000:
+            c = 19
+            d = -0.2
+        elif wav == 5100:
+            c = 40
+            d = -0.2
+
+        k_bol = c * (L_wav/ 10 ** 42)**d
+
+        return L_wav * k_bol
+
+    else:
+        print('[ERROR] Bolometric correction for specified wavelength not '
+              'available.')
+
+
+def correct_CIV_fwhm(fwhm, blueshift):
+    """
+    Correct the CIV FWHM according to Coatman et al. 2017 Eq. 4
+
+    :param fwhm: float
+        CIV FWHM in km/s
+    :param blueshift: float
+        CIV blueshift in km/s (not velocity shift, use correct sign)
+    :return:
+    """
+
+    return fwhm / (0.41 * blueshift/1000 + 0.62)
+
+
+def calc_CIV_BHmass_Co17(L_wav, wav, fwhm, verbosity=1):
+
+    reference = "Co17"
+
+    if wav == 1350:
+        return 10 ** 6.71 * (fwhm / 1000.) ** 2 * (
+                    wav * L_wav / 10 ** 44) ** (0.53), reference
+    else:
+        if verbosity > 1:
+            print("Specified wavelength does not allow for BH mass "
+                  "calculation with Hbeta", wav)
+
+
 def calc_BHmass_VP06VO09(L_wav, wav, fwhm, line="MgII", verbosity=2):
 
     """ Calculate black hole mass according to the empirical relations
@@ -618,8 +676,10 @@ def calc_BHmass_VP06VO09(L_wav, wav, fwhm, line="MgII", verbosity=2):
                        "calculation with CIV", wav)
 
     else:
-        print("No relation exists to calculate the BH mass from the specified "
-          "line: ", line)
+        if verbosity >1:
+            print("[Warning] No relation exists to calculate the BH mass for "
+                  "the specified line ({}) and wavelength ({}): ".format(
+                line, wav))
 
     return None, None
 
@@ -712,8 +772,11 @@ def calc_BH_masses(L_wav, wav, fwhm, line="MgII", verbosity=2):
         reference = "VO06"
 
         if wav == 1350:
-            return 10**6.66 * (fwhm/1000.)**2 * (wav * L_wav / 10**44)**(0.53),\
-                   reference
+            if not np.isnan(fwhm):
+                return 10**6.66 * (fwhm/1000.)**2 * (wav * L_wav / 10**44)**(0.53),\
+                       reference
+            else:
+                return np.NaN, reference
 
         else:
             if verbosity > 1:
@@ -721,370 +784,32 @@ def calc_BH_masses(L_wav, wav, fwhm, line="MgII", verbosity=2):
                        "calculation with CIV", wav)
 
     else:
-        print("No relation exists to calculate the BH mass from the specified "
-          "line: ", line)
+        if verbosity > 1:
+            print("[Warning] No relation exists to calculate the BH mass for "
+                  "the specified line ({}) and wavelength ({}): ".format(
+                line, wav))
+
+
 
     return None, None
+
+
+def calc_Halpha_BH_mass(L_Halpha, FWHM_Halpha):
+
+    # Implementation after Greene & Ho 2005 Equation 6
+    reference = "GH05"
+
+    if not np.isnan(FWHM_Halpha) or not np.isnan(L_Halpha):
+
+        return 2.0 * 1e+6 *  (FWHM_Halpha/1000)**2.06 * (L_Halpha/
+                                                       10**42)**0.55, \
+               reference
+
 
 
 # ------------------------------------------------------------------------------
 # MAIN RE-FITTING AND ANALYSIS ROUTINES
 # ------------------------------------------------------------------------------
-
-
-# def fit_emcee(foldername, redshift, verbose=2):
-#
-#     in_dict = load_qso_fit(foldername)
-#
-#     pass
-
-
-# def fit_and_resample(foldername, redsh, pl_prefix, fe_prefixes,
-#                     line_prefixes, line_names, line_wavs, cos, n_samples=100,
-#                     save_result_plots=True, mgII_feII_prefixmgII_feII_prefix=None, verbose=2):
-#
-#     # TODO save median results and statistical errors  to table
-#     # TODO have automatic plot save option
-#
-#     in_dict = load_qso_fit(foldername)
-#
-#     if hasattr(in_dict['spec'],'flux_err') == False:
-#         raise ValueError("The spectrum does not have usable flux errors")
-#
-#     spec = in_dict['spec']
-#
-#     cont_model_list = in_dict['cont_model_list']
-#     line_model_list = in_dict['line_model_list']
-#     cont_model_par_list = in_dict['cont_model_par_list']
-#     line_model_par_list = in_dict['line_model_par_list']
-#
-#     cont_fit_z_flag = in_dict['cont_fit_z_flag']
-#     line_fit_z_flag = in_dict['line_fit_z_flag']
-#
-#     # if there is no redshift parameter in cont, WHAT HAPPENS HERE?
-#     # cont_model_par_list[0]['pl_z'].vary = False
-#
-#     # read first line model parameters as redsh par?!
-#
-#
-#     redsh_par = Parameters()
-#     redsh_par.add(line_model_par_list[0]['z'])
-#
-#
-#     redsh_par_cont = Parameters()
-#     redsh_par_cont.add(line_model_par_list[0]['z'])
-#
-#
-#     DM = -cos.distance_modulus(redsh)
-#     K = cos.k_correction(redsh, -0.5)
-#     print("DM", DM, "K", K)
-#
-#
-#     # 0) Set up the storage arrays
-#     # wav_array = np.array([3000, 1350, 1450, 3000])
-#     f_wav = np.zeros(shape=(n_samples, len(line_wavs)))
-#     L_wav = np.zeros(shape=(n_samples, len(line_wavs)))
-#     f_3000 = np.zeros(n_samples)
-#     L_3000 = np.zeros(n_samples)
-#     L_bol = np.zeros(n_samples)
-#     pl_slopes = np.zeros(n_samples)
-#     redshift = np.zeros(n_samples)
-#
-#     fwhm = np.zeros(shape=(n_samples, len(line_wavs)))
-#     bh_mass = np.zeros(shape=(n_samples, len(line_wavs)))
-#     edd_lum = np.zeros(shape=(n_samples, len(line_wavs)))
-#     edd_ratio = np.zeros(shape=(n_samples, len(line_wavs)))
-#     vshift = np.zeros(shape=(n_samples, len(line_wavs)))
-#
-#
-#     # 1) Build the contiuum and line models with the pre-existing parameters
-#     # as initial conditions
-#     cont_model, cont_model_pars = build_continuum_model(cont_model_list,
-#                                                         cont_model_par_list,
-#                                                         cont_fit_z_flag,
-#                                                         redsh_par_cont,
-#                                                         z_vary=False)
-#
-#     line_model, line_model_pars = build_line_model(line_model_list,
-#                                                    line_model_par_list,
-#                                                    line_fit_z_flag,
-#                                                    redsh_par,
-#                                                    z_vary=True)
-#
-#     # 2) Resample the spectrum n times using the flux_err as 1 sigma of
-#     # Gaussian distribution
-#
-#     spec_array = np.zeros(shape=(n_samples, len(spec.dispersion)))
-#
-#     for idx, flux in enumerate(spec.flux):
-#
-#         flux_err = spec.flux_err[idx]
-#         samples_flux = np.random.normal(flux, flux_err, n_samples)
-#
-#         spec_array[:, idx] = samples_flux
-#
-#     # Begin loop
-#     for idx in range(n_samples):
-#         print(idx)
-#         spec_idx = spec_array[idx]
-#
-#         # 3 a) fit the continuum, then fit the lines -> record the results in
-#         # arrays
-#         m = np.logical_and(in_dict["mask_list"][1], in_dict["mask_list"][0])
-#         cont_fit_result = cont_model.fit(spec_idx[m],
-#                                          cont_model_pars,
-#                                          x=spec.dispersion[m],
-#                                          weights=1./spec.flux_err[m]**2)
-#
-#
-#         cont_fit_flux = cont_model.eval(cont_fit_result.params,
-#                                              x=spec.dispersion)
-#
-#         res_flux = spec_idx - cont_fit_flux
-#
-#
-#         m = np.logical_and(in_dict["mask_list"][2], in_dict["mask_list"][0])
-#         line_fit_result = line_model.fit(res_flux[m],
-#                                          line_model_pars,
-#                                          x=spec.dispersion[m],
-#                                          weights=1./spec.flux_err[m]**2)
-#
-#
-#         # 3 b) fit the continuum WITH the lines -> record the results in arrays
-#
-#         # TODO
-#
-#         # 4) Evaluate the fit
-#         # a) continuum evaluation
-#         redshift[idx] = line_fit_result.params['z']
-#
-#         for cont in cont_model_list:
-#
-#             if cont.prefix in pl_prefix:
-#                 params = cont_fit_result.params
-#
-#                 for jdx in range(len(line_wavs)):
-#                     f_wav[idx] += cont.eval(params, x=line_wavs[jdx] * (1. +
-#                                                                     redshift[
-#                                                                         idx]))
-#                 f_3000[idx] += cont.eval(params, x=3000 * (1. + redshift[idx]))
-#                 pl_slopes[idx] = params[cont.prefix + 'slope'].value
-#         #
-#
-#
-#         L_wav[idx] = calc_Lwav_from_fwav(f_wav[idx], redshift[idx], cos)
-#         L_3000[idx] = calc_Lwav_from_fwav(f_3000[idx], redshift[idx], cos)
-#         L_bol[idx] = calc_QSO_Lbol_from_L3000(L_3000[idx] * 3000)
-#
-#         # b) line evaluation
-#         # For each specified line in the input
-#         # construct line model, determine fwhm and calculate BHmass
-#
-#
-#
-#         for jdx, name in enumerate(line_names):
-#
-#             # retrieve all prefixes for the line to evaluate
-#             line_prefix_list = line_prefixes[jdx]
-#
-#             fwhm[idx, jdx] = calc_fwhm_from_line_models(spec.dispersion,
-#                                                         line_prefix_list,
-#                                                         line_model_list,
-#                                                         line_fit_result.params)
-#
-#
-#             bh_mass[idx, jdx], ref = \
-#                 calc_BHmass_VP06VO09(L_wav[idx, jdx],
-#                                      line_wavs[jdx],
-#                                      fwhm[idx, jdx],
-#                                      name)
-#
-#             edd_lum[idx, jdx] = calc_Edd_luminosity(bh_mass[idx, jdx])
-#             edd_ratio[idx, jdx] = L_bol[idx] / edd_lum[idx, jdx]
-#
-#         # TODO calculate the integrated line fluxes
-#
-#         # c) FeII over MgII calculation in wavelength range of 2200 to 3090 AA
-#
-#         # TODO calculate the MgII over FeII values
-#
-#     # End loop
-#
-#     # 5) Save all raw data in fit folder
-#     df = pd.DataFrame(np.array([f_3000,
-#                                 L_3000,
-#                                 L_bol,
-#                                 pl_slopes,
-#                                 redshift]).T,
-#                       columns=['f_3000',
-#                                'L_3000',
-#                                'L_bol',
-#                                'pl_slopes',
-#                                'redshift'])
-#
-#     for idx, name in enumerate(line_names):
-#         wav = line_wavs[idx]
-#         df['f_'+str(wav)] = f_wav[:, idx]
-#         df['L_'+str(wav)] = L_wav[:, idx]
-#         df['bhmass_' + str(name) + str(wav)] = bh_mass[:, idx]
-#         df['eddlum_' + str(name) + str(wav)] = edd_lum[:, idx]
-#         df['eddratio_' + str(name) + str(wav)] = edd_ratio[:, idx]
-#         df['vshift' + str(name)] = vshift[:, idx]
-#         df['fwhm' + str(name)] = fwhm[:, idx]
-#
-#     df.to_hdf(foldername+'/resampled_fitting_results'+str(
-#         n_samples)+'_raw.hdf5', 'data')
-#
-#
-#     # 6) Evaluate raw resampled fitting results and save median/+-1sigma
-#     # fitting results
-#
-#     fwhm_result = np.zeros(shape=(len(line_wavs), 3))
-#     bhmass_result = np.zeros(shape=(len(line_wavs), 3))
-#     eddlum_result = np.zeros(shape=(len(line_wavs), 3))
-#     eddratio_result = np.zeros(shape=(len(line_wavs), 3))
-#     vshift_result = np.zeros(shape=(len(line_wavs), 3))
-#
-#     percentiles = [50, 13.6, 86.4]
-#     redshift_result = np.percentile(redshift, percentiles)
-#     plslope_result = np.percentile(pl_slopes, percentiles)
-#     lbol_result = np.percentile(L_bol, percentiles)
-#
-#
-#     result_df = pd.DataFrame(np.array([percentiles,
-#                                        redshift_result,
-#                                        plslope_result,
-#                                        lbol_result]).T,
-#                       columns=['percentiles',
-#                                'redshift',
-#                                'pl_slope',
-#                                'L_bol'])
-#
-#     for jdx, name in enumerate(line_names):
-#         bhmass_result[jdx] = np.percentile(bh_mass[:, jdx], percentiles)
-#         eddlum_result[jdx] = np.percentile(edd_lum[:, jdx], percentiles)
-#         eddratio_result[jdx] = np.percentile(edd_ratio[:, jdx], percentiles)
-#         vshift_result[jdx] = np.percentile(vshift[:, jdx], percentiles)
-#         fwhm_result[jdx] = np.percentile(fwhm[:, jdx], percentiles)
-#
-#         result_df['{}_bhmass'.format(name)] = bhmass_result[jdx]
-#         result_df['{}_eddlum'.format(name)] = eddlum_result[jdx]
-#         result_df['{}_eddratio'.format(name)] = eddratio_result[jdx]
-#         result_df['{}_fwhm_result'.format(name)] = fwhm_result[jdx]
-#         result_df['{}_vshift_result'.format(name)] = vshift_result[jdx]
-#
-#     result_df.to_hdf(foldername + '/resampled_fitting_results' + str(
-#         n_samples) + '.hdf5', 'data')
-#     result_df.to_csv(foldername + '/resampled_fitting_results' + str(
-#         n_samples) + '.csv')
-#
-#     # 7) Plot fitting results in one page
-#
-#     for jdx, name in enumerate(line_names):
-#
-#
-#         fig = plt.figure(figsize=(12,9))
-#
-#         fig.subplots_adjust(hspace=0.3)
-#
-#         ax1 = fig.add_subplot(235)
-#         ax2 = fig.add_subplot(231)
-#         ax3 = fig.add_subplot(234)
-#         ax4 = fig.add_subplot(232)
-#         ax5 = fig.add_subplot(233)
-#         ax6 = fig.add_subplot(236)
-#
-#         ax2.axvline(redshift_result[0], c='k', ls='-', lw=2)
-#         ax2.axvline(redshift_result[1], c='k', ls='-.', lw=2)
-#         ax2.axvline(redshift_result[2], c='k', ls='-.', lw=2)
-#         ax2.hist(redshift, bins=round(n_samples/2.))
-#
-#
-#         med = '{:.4f}'.format(redshift_result[0])
-#         dp = '{:+.4f}'.format((redshift_result[2] - redshift_result[0]))
-#         dm = '{:+.4f}'.format((redshift_result[1] - redshift_result[0]))
-#
-#         ax2.set_title(med + ' ' + dp + ' ' + dm)
-#         ax2.set_xlabel(r'$\rm{Line\ fit\ redshift}$',
-#                        fontsize=15)
-#
-#         ax3.hist(fwhm[:, jdx], bins=round(n_samples / 20.))
-#         ax3.axvline(fwhm_result[jdx, 0], c='k', ls='-', lw=2)
-#         ax3.axvline(fwhm_result[jdx, 1], c='k', ls='-.', lw=2)
-#         ax3.axvline(fwhm_result[jdx, 2], c='k', ls='-.', lw=2)
-#
-#         med = '{:.2f}'.format(fwhm_result[jdx, 0])
-#         dp = '{:+.2f}'.format((fwhm_result[jdx, 2] - fwhm_result[jdx,
-#                                                                      0]))
-#         dm = '{:+.2f}'.format((fwhm_result[jdx, 1] - fwhm_result[jdx,
-#                                                                      0]))
-#
-#         ax3.set_title(med + ' ' + dp + ' ' + dm)
-#         ax3.set_xlabel(r'$\rm{' + name + r'\ FWHM\ } [\rm{km}\,\rm{s}^{-1}]$',
-#                        fontsize=15)
-#
-#         ax1.hist(bh_mass[:, jdx]/1e+8, bins= round(n_samples/20.))
-#         ax1.axvline(bhmass_result[jdx, 0]/1e+8, c='k', ls='-', lw=2)
-#         ax1.axvline(bhmass_result[jdx, 1]/1e+8, c='k', ls='-.', lw=2)
-#         ax1.axvline(bhmass_result[jdx, 2]/1e+8, c='k', ls='-.', lw=2)
-#
-#         med = '{:.2f}'.format(bhmass_result[jdx, 0]/1e+8)
-#         dp = '{:+.2f}'.format((bhmass_result[jdx,2] - bhmass_result[jdx,
-#                                                                     0])/1e+8)
-#         dm = '{:+.2f}'.format((bhmass_result[jdx,1] - bhmass_result[jdx,
-#                                                                     0])/1e+8)
-#
-#         ax1.set_title(med + ' ' + dp + ' ' + dm)
-#         ax1.set_xlabel(r'$\rm{' + name + '\ BH\ mass\ } [10^8\,M_\odot]$',
-#                        fontsize=15)
-#
-#         ax4.hist(pl_slopes, bins=round(n_samples / 20.))
-#         ax4.axvline(plslope_result[0], c='k', ls='-', lw=2)
-#         ax4.axvline(plslope_result[1], c='k', ls='-.', lw=2)
-#         ax4.axvline(plslope_result[2], c='k', ls='-.', lw=2)
-#
-#         med = '{:.4f}'.format(plslope_result[0])
-#         dp = '{:+.4f}'.format((plslope_result[2] - plslope_result[0]))
-#         dm = '{:+.4f}'.format((plslope_result[1] - plslope_result[0]))
-#
-#         ax4.set_title(med + ' ' + dp + ' ' + dm)
-#         ax4.set_xlabel(r'$\rm{Power\ law\ slope}$',
-#                        fontsize=15)
-#
-#         ax5.hist(L_bol/1e+47, bins=round(n_samples / 20.))
-#         ax5.axvline(lbol_result[0]/1e+47, c='k', ls='-', lw=2)
-#         ax5.axvline(lbol_result[1]/1e+47, c='k', ls='-.', lw=2)
-#         ax5.axvline(lbol_result[2]/1e+47, c='k', ls='-.', lw=2)
-#
-#         med = '{:.4f}'.format(lbol_result[0]/1e+47)
-#         dp = '{:+.4f}'.format((lbol_result[2] - lbol_result[0])/1e+47)
-#         dm = '{:+.4f}'.format((lbol_result[1] - lbol_result[0])/1e+47)
-#
-#         ax5.set_title(med + ' ' + dp + ' ' + dm)
-#         ax5.set_xlabel(r'$\rm{Bolometic\ luminosity}\ [10^{47}\rm{erg}\,'
-#                        r'\rm{s}^{'
-#                        r'-1}]$',
-#                        fontsize=15)
-#
-#         ax6.hist(edd_ratio[:, jdx], bins=round(n_samples / 20.))
-#         ax6.axvline(eddratio_result[jdx, 0], c='k', ls='-', lw=2)
-#         ax6.axvline(eddratio_result[jdx, 1], c='k', ls='-.', lw=2)
-#         ax6.axvline(eddratio_result[jdx, 2], c='k', ls='-.', lw=2)
-#
-#         med = '{:.2f}'.format(eddratio_result[jdx, 0])
-#         dp = '{:+.2f}'.format((eddratio_result[jdx, 2] - eddratio_result[jdx,
-#                                                                  0]))
-#         dm = '{:+.2f}'.format((eddratio_result[jdx, 1] - eddratio_result[jdx,
-#                                                                  0]))
-#         ax6.set_title(med + ' ' + dp + ' ' + dm)
-#         ax6.set_xlabel(r'$\rm{Eddington\ ratio}$',
-#                        fontsize=15)
-#
-#         if save_result_plots:
-#             plt.savefig('{}_results.pdf'.format(name))
-#
-#         plt.show()
-
 
 
 def fit_emcee(filename, foldername, redshift):
@@ -1295,7 +1020,6 @@ def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
                                 flux_err=spec.flux_err, unit='f_lam')
 
         if smooth is not False:
-            print(smooth)
             idx_spec.smooth(smooth, inplace=True)
 
         # 3 a) fit the continuum, then fit the lines -> record the results in
@@ -1382,9 +1106,9 @@ def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
     # fitting results
     stat_result_array = np.zeros(shape=(3, n_results))
 
-    stat_result_array[0, :] = np.percentile(raw_df.values, 50, axis=0)
-    stat_result_array[1, :] = np.percentile(raw_df.values, 13.6, axis=0)
-    stat_result_array[2, :] = np.percentile(raw_df.values, 86.4, axis=0)
+    stat_result_array[0, :] = np.nanpercentile(raw_df.values, 50, axis=0)
+    stat_result_array[1, :] = np.nanpercentile(raw_df.values, 13.6, axis=0)
+    stat_result_array[2, :] = np.nanpercentile(raw_df.values, 86.4, axis=0)
 
     result_df = pd.DataFrame(data=stat_result_array, index=['median','lower',
                                                             'upper'],
@@ -1478,7 +1202,7 @@ def analyse(spec,
           line_prefixes,
           redshift,
           resolution=None,
-          continuum_wavelengths=[3000, 1450, 1350, 2100, 5100],
+          continuum_wavelengths=[3000, 1400, 1450, 1350, 2100, 5100],
           calc_bh_masses=True,
           mgII_feII_prefix = None,
           mgII_feII_int_range = None,
@@ -1495,8 +1219,11 @@ def analyse(spec,
 
     if 3000 not in continuum_wavelengths:
         continuum_wavelengths.append(3000)
+    if 1400 not in continuum_wavelengths:
+        continuum_wavelengths.append(1400)
 
     cont_wav_3000_idx = continuum_wavelengths.index(3000)
+    cont_wav_1400_idx = continuum_wavelengths.index(1400)
     continuum_wavelengths = np.array(continuum_wavelengths)
     cont_fwav = np.zeros(len(continuum_wavelengths))
 
@@ -1525,6 +1252,10 @@ def analyse(spec,
     cont_Lwav = calc_Lwav_from_fwav(cont_fwav, redshift, cosmology)
     L_bol = calc_QSO_Lbol_from_L3000(cont_Lwav[cont_wav_3000_idx] *
                                      continuum_wavelengths[cont_wav_3000_idx])
+    L_bol_Ne19_1400 = calc_QSO_Lbol_Ne19(cont_Lwav[cont_wav_1400_idx] *
+                                     continuum_wavelengths[
+                                         cont_wav_1400_idx], 1400)
+
 
     for idx, wave in enumerate(continuum_wavelengths):
         result_dict['cont_flux_{}'.format(wave)] = cont_fwav[idx]
@@ -1532,6 +1263,7 @@ def analyse(spec,
 
     result_dict['pl_slope'] = pl_slope
     result_dict['L_bol'] = L_bol
+    result_dict['L_bol_Ne19_1400'] = L_bol_Ne19_1400
 
     if verbosity > 1:
         print('[INFO] Continuum wavelenghts for flux measurements:')
@@ -1542,6 +1274,8 @@ def analyse(spec,
         print('[INFO] {}'.format(cont_Lwav))
         print('[INFO] Power law slope: {:.2f}'.format(pl_slope))
         print('[INFO] Bolometric luminosity: {:} (erg/s)'.format(L_bol))
+        print('[INFO] Bolometric luminosity (Ne19, 1400A): {:} (erg/s)'.format(
+            L_bol_Ne19_1400))
 
     # - build Fe continuum model (only Fe emission)
 
@@ -1578,6 +1312,11 @@ def analyse(spec,
                                                      cont_model_list,
                                                      cont_model_par_list)
 
+        fe_flux_3000 = build_line_flux_from_line_models(np.array([3000* (redshift + 1)]),
+                                                     mgII_feII_prefix,
+                                                     cont_model_list,
+                                                     cont_model_par_list)
+
         fe_fl = calc_integrated_flux(dispersion, fe_flux,
                                      range=mgII_feII_int_range_z)
 
@@ -1595,6 +1334,15 @@ def analyse(spec,
             print('[INFO] FeII flux: {:.2e}'.format(fe_fl))
 
 
+        # Calculate bolometric luminosity according to Netzer 2019
+        f_wav_3000 = fe_flux_3000[0] + cont_fwav[cont_wav_3000_idx]
+        L_wav_3000 = calc_Lwav_from_fwav(f_wav_3000, redshift, cosmology)
+        L_bol_Ne19 = calc_QSO_Lbol_Ne19(L_wav_3000*3000, 3000)
+
+        result_dict['L_bol_Ne19_3000'] = L_bol_Ne19
+        if verbosity > 1:
+            print('[INFO] Bolometric luminosity (Ne19, 3000A): {:} (erg/s)'.format(
+                L_bol_Ne19))
 
 
     # Analyse lines
@@ -1634,12 +1382,14 @@ def analyse(spec,
                                                          line_model_list,
                                                          line_model_par_list)
 
+        # Calculate FWHM from line
         fwhm = calc_fwhm_from_line(dispersion, line_flux)
 
         if resolution is not None and fwhm[0] is not np.NaN:
             if verbosity > 1:
                 print('[INFO] Correcting FWHM for provided resolution.')
             fwhm = np.sqrt(fwhm**2-resolution**2)
+
 
         flux_line = calc_integrated_flux(dispersion, line_flux)
 
@@ -1684,6 +1434,17 @@ def analyse(spec,
         result_dict[name+'_L'] = L_line
         result_dict[name + '_flux'] = flux_line
 
+        # Apply FWHM correction for CIV line
+        if name == 'CIV':
+            fwhm_corr = correct_CIV_fwhm(fwhm[0], -dv)
+            result_dict[name + '_fwhm_corr'] = fwhm_corr
+
+            if resolution is not None and fwhm_corr is not np.NaN:
+                if verbosity > 1:
+                    print('[INFO] Correcting  corrected CIV FWHM for provided '
+                          'resolution.')
+                fwhm_corr = np.sqrt(fwhm_corr ** 2 - resolution ** 2)
+
         if verbosity > 1:
             print('[INFO] Line analysis for {}'.format(name))
             print('[INFO] {} rest frame wavelength is {}'.format(name,
@@ -1697,6 +1458,9 @@ def analyse(spec,
             print('[INFO] {:} line flux: {:.4e}'.format(name, flux_line))
             print('[INFO] {:} line luminosity: {:.4e}'.format(name, L_line))
 
+            if name == 'CIV':
+                print('[INFO] {:} line corrected FWHM: {:.4e}'.format(name,
+                                                                  fwhm_corr))
 
 
         # Black hole mass calculation
@@ -1711,7 +1475,8 @@ def analyse(spec,
                                                    name,
                                                    verbosity=verbosity)
 
-                if bhmass is not None and not isinstance(bhmass, list):
+                if bhmass is not None and not np.any(np.isnan(bhmass)) and not \
+                        isinstance(bhmass, list):
 
                     bhmass = bhmass[0]
 
@@ -1729,7 +1494,8 @@ def analyse(spec,
                         print('[INFO] Eddington luminosity ratio {}: {}'.format(
                             edd_lum_name, L_bol / edd_lum))
 
-                if bhmass is not None and isinstance(bhmass, list):
+                elif bhmass is not None and not np.any(np.isnan(bhmass)) and \
+                        isinstance(bhmass, list):
 
                     for idx, bhm in enumerate(bhmass):
                         reference = ref[idx]
@@ -1749,6 +1515,57 @@ def analyse(spec,
                             print(
                                 '[INFO] Eddington luminosity ratio {}: {}'.format(
                                     edd_lum_name, L_bol / edd_lum))
+
+                elif bhmass is not None and np.any(np.isnan(bhmass)):
+                    bhmass_name = name + '_BHmass_' + str(
+                        wave) + '_' + ref
+                    edd_lum_name = name + '_EddLumR_' + str(
+                        wave) + '_' + ref
+                    result_dict[bhmass_name] = np.NaN
+                    result_dict[edd_lum_name] = np.NaN
+
+            # NEEDS TO BE TESTED!!!!
+            if name == 'Halpha':
+
+                bhmass, ref = calc_Halpha_BH_mass(L_line, fwhm[0])
+
+                bhmass_name = name + '_BHmass_' + str(wave) + '_' + ref
+                result_dict[bhmass_name] = bhmass
+
+                edd_lum = calc_Edd_luminosity(bhmass)
+                edd_lum_name = name + '_EddLumR_' + str(wave) + '_' + ref
+                result_dict[edd_lum_name] = L_bol / edd_lum
+
+                if verbosity > 1:
+                    print('[INFO] Black hole mass {}: {}'.format(
+                        bhmass_name, bhmass))
+                    print('[INFO] Eddington luminosity ratio {}: {}'.format(
+                        edd_lum_name, L_bol / edd_lum))
+
+
+
+        # Calculate BH mass for corrected CIV fwhm
+        if name == 'CIV':
+            wave = 1350
+            L_wav = result_dict['cont_L_{}'.format('1350')]
+            bhmass_corr, ref = calc_CIV_BHmass_Co17(L_wav, wave, fwhm_corr)
+            bhmass_name = name + '_BHmass_corr_' + str(wave) + '_' + ref
+
+            result_dict[bhmass_name] = bhmass_corr
+
+            edd_lum = calc_Edd_luminosity(bhmass_corr)
+            edd_lum_name = name + '_EddLumR_corr_' + str(
+                wave) + '_' + ref
+
+            result_dict[edd_lum_name] = L_bol / edd_lum
+
+            if verbosity > 1:
+                print('[INFO] CIV Black hole mass (Co17) {}: {}'.format(
+                    bhmass_name, bhmass_corr))
+                print(
+                    '[INFO] CIV Eddington luminosity ratio (Co17) {}: {'
+                    '}'.format(
+                        edd_lum_name, L_bol / edd_lum))
 
 
     # Calculate MgII over FeII if available
