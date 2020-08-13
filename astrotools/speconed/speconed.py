@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""The SpecOneD module.
+"""The speconed module.
 
 This module introduces the SpecOneD class, it's functions and the related
 FlatSpectrum and QuasarSpectrum classes.
@@ -23,7 +23,6 @@ datadir : str
     The path to the data directory formatted as  a string.
 """
 
-import sys
 import os
 import numpy as np
 import scipy as sp
@@ -32,18 +31,17 @@ import pandas as pd
 
 from astropy.io import fits
 from astropy.constants import c
+from astropy import units as u
 from astropy.convolution import convolve, Gaussian1DKernel, Box1DKernel
 
 from scipy.signal import medfilt
-from matplotlib import rc
+
 import matplotlib.pyplot as plt
 
 from numpy.polynomial import Legendre, Chebyshev, Polynomial
 
-from lmfit import Model
-from lmfit.models import ExponentialModel, GaussianModel, LinearModel
-
-from IPython import embed
+datadir = os.path.split(__file__)[0]
+datadir = os.path.split(datadir)[0] + '/data/'
 
 black = (0, 0, 0)
 orange = (230/255., 159/255., 0)
@@ -56,12 +54,10 @@ purple = (204/255., 121/255., 167/255.)
 
 color_list = [vermillion, dblue, green, purple, yellow, orange, blue]
 
-datadir = os.path.split(__file__)[0]
-datadir = os.path.split(datadir)[0] + '/data/'
 
 
 def gaussian(x, amp, cen, sigma, shift):
-    """ 1-D Gaussian """
+    """ 1-D Gaussian function"""
     central = cen + shift
 
     return (amp / (np.sqrt(2*np.pi) * sigma)) * np.exp(-(x-central)**2 / (2*sigma**2))
@@ -128,7 +124,8 @@ class SpecOneD(object):
             dictionary or a fits format header file.
         unit : str
             A string defining the unit of the flux measurement. Currently
-            flux per wavelength or per frequency are supported as the following
+            flux density per wavelength or per frequency are supported as the
+            following
             options: 'f_lam' for wavelength, 'f_nu' for frequency.
         mask : ndarray
             A 1D boolean array can be specified to provide a mask for the
@@ -297,7 +294,8 @@ class SpecOneD(object):
     def save_to_fits(self, filename, comment=None, overwrite = False):
         """Save a SpecOneD spectrum to a fits file.
 
-        Note: This save function does not store flux_errors, masks, fits etc. Only the original header, the dispersion (via the header), and the flux
+        Note: This save function does not store flux_errors, masks, fits etc.
+        Only the original header, the dispersion (via the header), and the flux
         are stored.
 
         Parameters
@@ -368,12 +366,12 @@ class SpecOneD(object):
             data.append(self.flux_err)
 
 
-        if hasattr(self,'telluric'):
+        if hasattr(self, 'telluric'):
             data.append(self.telluric)
-        if hasattr(self,'obj_model'):
+        if hasattr(self, 'obj_model'):
             data.append(self.obj_model)
 
-        if format=='linetools':
+        if format == 'linetools':
 
             column_names = ['wave', 'flux']
             if self.flux_err is not None:
@@ -400,7 +398,7 @@ class SpecOneD(object):
 
     def reset_mask(self):
         """Reset the spectrum mask by repopulating it with a 1D array of
-        boolean 1 values.
+        boolean 1 = "True" values.
         """
 
         self.mask = np.ones(self.dispersion.shape, dtype=bool)
@@ -1774,6 +1772,35 @@ class SpecOneD(object):
 
             return spec
 
+    def create_dispersion_by_resolution(self, resolution):
+        """
+        This function creates a new dispersion axis in wavelength sampled by
+        a fixed resolution, given in km/s
+        :param resolution:
+        :return:
+        """
+
+        new_dispersion = [self.dispersion[0]]
+        lambda_new = 0
+        while lambda_new < self.dispersion[-1]:
+
+            d_lambda = new_dispersion[-1]/c.to(u.km/u.s).value * resolution
+            # print(lambda_new)
+            lambda_new = d_lambda + new_dispersion[-1]
+            new_dispersion.append(lambda_new)
+
+        return np.array(new_dispersion[1:-1])
+
+    def resample_to_resolution(self, resolution, buffer=2, inplace=False):
+
+        new_dispersion = self.create_dispersion_by_resolution(resolution)
+
+        if inplace:
+            self.resample(new_dispersion[buffer:-buffer], inplace=inplace)
+        else:
+            return self.resample(new_dispersion[buffer:-buffer],
+                                 inplace=inplace)
+
     def resample(self, new_dispersion, inplace=False, force=False):
         """
         Function for resampling spectra (and optionally associated
@@ -1932,12 +1959,57 @@ class SpecOneD(object):
 
             return spec
 
+    def bin_by_npixels(self, npix):
+        """Bin npix pixels of the old spectrum to form a new spectrum. We
+        assume that the bin boundaries of the old spectrum are always exactly
+        in the center wavelength position between adjacent pixel wavelengths.
 
-    def clean_outliers(self):
+        :param npix:
+        :return:
+        """
 
-        # mask outliers, interpolate to fill flux values that were masked
+        disp = self.dispersion
+        dbins = disp[1:] - disp[:-1]
+        bin_boundary = disp[:-1] + 0.5 * dbins
 
-        pass
+        lbins = bin_boundary[:-1]
+        rbins = bin_boundary[1:]
+        mbins = disp[1:-1]
+        dbins = rbins - lbins
+        flux = self.flux[1:-1]
+        flux_err = self.flux_err[1:-1]
+        num_bins = len(mbins)
+
+        num_new_bins = int((num_bins - (num_bins % npix)) / npix)
+
+        new_wave = np.zeros(num_new_bins)
+        new_flux = np.zeros(num_new_bins)
+        new_flux_err = np.zeros(num_new_bins)
+
+        for idx in range(num_new_bins):
+
+            _new_flux = 0
+            _new_flux_err = 0
+            _new_dbin = 0
+
+            for jdx in range(npix):
+                _new_flux += flux[idx * npix + jdx] * dbins[idx * npix + jdx]
+                _new_dbin += dbins[idx * npix + jdx]
+                _new_flux_err += (flux_err[idx * npix + jdx] * dbins[
+                    idx * npix + jdx]) ** 2
+
+            rbin = rbins[npix * idx + npix - 1]
+            lbin = lbins[npix * idx]
+            _new_wave = (rbin - lbin) * 0.5 + lbin
+
+            new_wave[idx] = _new_wave
+            new_flux[idx] = _new_flux / _new_dbin
+            new_flux_err[idx] = np.sqrt(_new_flux_err) / _new_dbin
+
+        return SpecOneD(dispersion=new_wave, flux=new_flux,
+                            flux_err=new_flux_err, unit='f_lam')
+
+
 
 
 class FlatSpectrum(SpecOneD):

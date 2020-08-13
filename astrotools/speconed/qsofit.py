@@ -45,7 +45,8 @@ dblue = (0, 114/255., 178/255.)
 vermillion = (213/255., 94/255., 0)
 purple = (204/255., 121/255., 167/255.)
 
-
+cos = cosm.Cosmology()
+cos.set_zentner2007_cosmology()
 
 # ------------------------------------------------------------------------------
 # MODEL FUNCTIONS
@@ -135,6 +136,7 @@ def load_qso_fit(foldername):
                   'power_law_continuum': specmod.power_law,
                   'power_law_at_2500A': specmod.power_law_at_2500A,
                   'template_model': specmod.template_model,
+                  'template_model_new': specmod.template_model_new,
                   'gaussian_fwhm_km_s': specmod.gaussian_fwhm_km_s,
                   'gaussian_fwhm_km_s_z': specmod.gaussian_fwhm_km_s_z,
                   'gaussian_fwhm_z': specmod.gaussian_fwhm_z,
@@ -143,6 +145,8 @@ def load_qso_fit(foldername):
                       specmod.power_law_at_2500A_plus_BC,
                   'power_law_at_2500A_plus_flexible_BC':
                       specmod.power_law_at_2500A_plus_flexible_BC,
+                  'power_law_at_2500A_plus_manual_BC':
+                      specmod.power_law_at_2500A_plus_manual_BC,
                   'CIII_model_func': specmod.CIII_model_func}
 
     cont_models = glob.glob(foldername + '/cont_*.json')
@@ -759,14 +763,32 @@ def calc_BH_masses(L_wav, wav, fwhm, line="MgII", verbosity=2):
         reference = "VO06"
 
         if wav == 5100:
-            return 10**6.91 * (fwhm/1000.)**2 * (wav * L_wav / 10**44)**(0.5), \
-                   reference
-
+            zp = [6.91, np.log10(4.74E+6)]
+            b = [0.5, 0.61]
+            reference = ["VO06", "MJ02"]
+            # return 10**6.91 * (fwhm/1000.)**2 * (wav * L_wav / 10**44)**(0.5), \
+            #        reference
+        # elif
         else:
             if verbosity > 1:
                 print ("Specified wavelength does not allow for BH mass "
                        "calculation with Hbeta", wav)
             # return None, None
+
+
+        if zp is not None and b is None:
+            return 10**zp * (fwhm/1000.)**2 * (wav * L_wav / 10**44)**(0.5), \
+               reference
+        elif zp is not None and b is not None:
+
+            bhmass_a = 10**zp[0] * (fwhm/1000.)**2 * (wav * L_wav / 10**44)**(
+                b[0])
+            bhmass_b = 10 ** zp[1] * (fwhm / 1000.) ** 2 * (
+                        wav * L_wav / 10 ** 44) ** (
+                           b[1])
+            bhmass = [bhmass_a, bhmass_b]
+
+            return bhmass, reference
 
     elif line == "CIV":
         reference = "VO06"
@@ -913,10 +935,14 @@ def fit_emcee(filename, foldername, redshift):
 
 
 def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
-                        line_prefixes, line_names, continuum_wavelengths, cosmology,
+                        line_prefixes, line_names,
+                        continuum_wavelengths=[3000, 1400, 1450, 1350, 2100,
+                                               2500, 5100],
+                        cosmology=cos,
                         n_samples=100, cont_fit_weights=True,
                         line_fit_weights=True,
-                        smooth = 10,
+                        smooth=False,
+                        bin=4,
                         save_result_plots=True, resolution=None,
                         mgII_feII_prefix=None,
                         mgII_feII_int_range=None, verbosity=0):
@@ -1003,13 +1029,21 @@ def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111)
 
-    # smooth spectrum
-    spec.smooth(20, inplace=True)
+    if bin is not False:
+        spec2 = spec.bin_by_npixels(4)
+
+    elif smooth is not False:
+        spec2 = spec.copy()
+    else:
+        spec2 = spec.copy()
+
+    # smooth spectrum only for plotting
+    spec2.smooth(20, inplace=True)
     # ax.plot(spec.dispersion[m], spec.flux[m] * 1e+17, color='grey')
-    print("SPECTRUM RAW", len(spec.raw_dispersion), len(spec.raw_flux),
+    print("SPECTRUM RAW", len(spec2.raw_dispersion), len(spec2.raw_flux),
           len(in_dict["mask_list"][0]))
-    ax.plot(spec.raw_dispersion[m], spec.raw_flux[m] * 1e+17, color='grey')
-    ax.plot(spec.dispersion[m], spec.flux[m] * 1e+17, color='k')
+    ax.plot(spec2.raw_dispersion[m], spec2.raw_flux[m] * 1e+17, color='grey')
+    ax.plot(spec2.dispersion[m], spec2.flux[m] * 1e+17, color='k')
 
     # Begin loop
     for idx in range(n_samples):
@@ -1019,8 +1053,13 @@ def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
         idx_spec = sod.SpecOneD(dispersion=spec.dispersion, flux=spec_idx,
                                 flux_err=spec.flux_err, unit='f_lam')
 
-        if smooth is not False:
+        if smooth is not False and bin is False:
             idx_spec.smooth(smooth, inplace=True)
+        if bin is not False and smooth is False:
+            idx_spec = idx_spec.bin_by_npixels(bin)
+
+        # ax.plot(idx_spec.dispersion[m], idx_spec.flux[m] * 1e+17)
+
 
         # 3 a) fit the continuum, then fit the lines -> record the results in
         # arrays
@@ -1038,7 +1077,7 @@ def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
                                              x=idx_spec.dispersion[cont_m])
 
         cont_fit_flux = cont_model.eval(cont_fit_result.params,
-                                        x=spec.dispersion)
+                                        x=spec2.dispersion)
 
         res_flux = idx_spec.flux - cont_fit_flux
 
@@ -1055,12 +1094,12 @@ def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
                                              x=idx_spec.dispersion[line_m])
 
         line_fit_flux = line_model.eval(line_fit_result.params,
-                                        x=spec.dispersion)
+                                        x=spec2.dispersion)
 
         # Plot spectrum, continuum fit, and line fit for each draw
-        ax.plot(spec.dispersion, cont_fit_flux*1e+17, color=dblue,
+        ax.plot(spec2.dispersion, cont_fit_flux*1e+17, color=dblue,
         alpha=0.5)
-        ax.plot(spec.dispersion, (cont_fit_flux+line_fit_flux)*1e+17,
+        ax.plot(spec2.dispersion, (cont_fit_flux+line_fit_flux)*1e+17,
                 color=vermillion, alpha=0.5)
 
         # 4) Evaluate the fit
@@ -1093,7 +1132,8 @@ def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
 
 
     # End plotting routine for spectra
-    plt.ylim(0.01, 1.3)
+    # plt.ylim(0.01, 1.3)
+    # plt.show()
     plt.savefig(foldername + '/resampled_fits.pdf')
 
 
@@ -1107,8 +1147,10 @@ def fit_and_resample_new(spec, foldername, redshift, pl_prefix,
     stat_result_array = np.zeros(shape=(3, n_results))
 
     stat_result_array[0, :] = np.nanpercentile(raw_df.values, 50, axis=0)
-    stat_result_array[1, :] = np.nanpercentile(raw_df.values, 13.6, axis=0)
-    stat_result_array[2, :] = np.nanpercentile(raw_df.values, 86.4, axis=0)
+    stat_result_array[1, :] = np.nanpercentile(raw_df.values, 15.9, axis=0)
+    stat_result_array[2, :] = np.nanpercentile(raw_df.values, 84.1, axis=0)
+    # stat_result_array[1, :] = np.nanpercentile(raw_df.values, 13.6, axis=0)
+    # stat_result_array[2, :] = np.nanpercentile(raw_df.values, 86.4, axis=0)
 
     result_df = pd.DataFrame(data=stat_result_array, index=['median','lower',
                                                             'upper'],
@@ -1154,7 +1196,7 @@ def analyse_model(foldername,
                   line_prefixes,
                   redshift,
                   resolution=None,
-                  continuum_wavelengths=[3000, 1450, 1350, 2100, 5100],
+                  continuum_wavelengths=[3000, 1400, 1450, 1350, 2100, 5100],
                   calc_bh_masses=True,
                   mgII_feII_prefix=None,
                   mgII_feII_int_range=None,
@@ -1408,10 +1450,25 @@ def analyse(spec,
 
 
         # calculate peak from composite lines
+        # Changed resolution by factor of 10 to better resolve line peak.
+        higher_disp = np.arange(dispersion[0],
+                                dispersion[-1]+(dispersion[1]-dispersion[0]),
+                                (dispersion[1]-dispersion[0])/10.)
+        line_flux = build_line_flux_from_line_models(higher_disp,
+                                                     line_prefix_list,
+                                                     line_model_list,
+                                                     line_model_par_list)
+
         index_max = np.argmax(line_flux)
-        wav_max = dispersion[index_max]
+        wav_max = higher_disp[index_max]
         line_z = (wav_max/wav_rest) - 1.
         # calculate redshift from composite lines
+
+        # go back to original dispersion
+        line_flux = build_line_flux_from_line_models(dispersion,
+                                                     line_prefix_list,
+                                                     line_model_list,
+                                                     line_model_par_list)
 
         L_line = calc_integrated_line_luminosity(dispersion,
                                                  line_flux,

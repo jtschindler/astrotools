@@ -810,6 +810,7 @@ class SpecFitGui(QMainWindow):
                       'power_law_continuum': power_law,
                       'power_law_at_2500A': power_law_at_2500A,
                       'template_model': template_model,
+                      'template_model_new': template_model_new,
                       'gaussian_fwhm_km_s': gaussian_fwhm_km_s,
                       'gaussian_fwhm_km_s_z': gaussian_fwhm_km_s_z,
                       'gaussian_fwhm_z': gaussian_fwhm_z,
@@ -818,6 +819,8 @@ class SpecFitGui(QMainWindow):
                           power_law_at_2500A_plus_BC,
                       'power_law_at_2500A_plus_flexible_BC':
                           power_law_at_2500A_plus_flexible_BC,
+                      'power_law_at_2500A_plus_manual_BC':
+                          power_law_at_2500A_plus_manual_BC,
                       'CIII_model_func': CIII_model_func}
 
         cont_models = glob.glob(foldername+'/cont_*.json')
@@ -1091,7 +1094,7 @@ class SpecFitGui(QMainWindow):
         # Pre determined mask windows
         self.mask_combobox = QComboBox()
         self.mask_combobox.addItem("X-SHOOTER NIR atmospheric windows")
-        self.mask_combobox.addItem("QSO High-z PCA model 1200-3100")
+        # self.mask_combobox.addItem("QSO High-z PCA model 1200-3100")
         self.mask_combobox.addItem("X-SHOOTER HighZ continuum windows")
         self.mask_combobox.addItem("X-SHOOTER HighZ line windows")
         self.mask_combobox.addItem("QSO continuum windows (VP06)")
@@ -1307,13 +1310,19 @@ class SpecFitGui(QMainWindow):
 
         xshooter_nir_atmospheric_windows = np.array([[5000, 10250],
                                                      [13450, 14300],
-                                                     [18000, 19400]])
+                                                     [18000, 19400],
+                                                     [22600, 30000]])
 
         xshooter_surge_continuum_windows = np.array([[1445, 1465],
                                                      [1700, 1705],
                                                      [2155, 2400],
                                                      [2480, 2675],
                                                      [2925, 3100]])
+
+        xshooter_surge_line_windows = np.array([[1340, 1425],
+                                                [1470, 1600],
+                                                [1800, 2000],
+                                                [2700, 2900]])
 
         qso_continuum_windows = np.array([
                                           [1350, 1360],
@@ -1323,11 +1332,11 @@ class SpecFitGui(QMainWindow):
                                           [2480, 2675],
                                           [2925, 3100]])
 
-        xshooter_surge_line_windows = np.array([[2700, 2900],
-                                                [1470, 1600]])
+        # xshooter_surge_line_windows = np.array([[2700, 2900],
+        #                                         [1470, 1600]])
 
-        qso_pca_1200_3100_model = np.array([[0, 1200],
-                                            [3100, 99999]])
+        # qso_pca_1200_3100_model = np.array([[0, 1200],
+        #                                     [3100, 99999]])
 
         pisco_continuum = np.array([[1275, 1285], [1310, 1325], [2500,2750],
                                     [2850, 2890]])
@@ -1355,9 +1364,9 @@ class SpecFitGui(QMainWindow):
         elif mask_preset_name == "X-SHOOTER NIR atmospheric windows":
             masks_to_apply = xshooter_nir_atmospheric_windows
             self.active_mask = 0
-        elif mask_preset_name == "QSO High-z PCA model 1200-3100":
-            masks_to_apply = (1. + redsh) * qso_pca_1200_3100_model
-            self.active_mask = 0
+        # elif mask_preset_name == "QSO High-z PCA model 1200-3100":
+        #     masks_to_apply = (1. + redsh) * qso_pca_1200_3100_model
+        #     self.active_mask = 0
         elif mask_preset_name == "X-SHOOTER HighZ continuum windows":
             masks_to_apply = (1. + redsh) * xshooter_surge_continuum_windows
             self.active_mask = 1
@@ -1449,6 +1458,7 @@ class SpecFitGui(QMainWindow):
         self.cont_fit_box.addItem("Power Law (2500A)")
         self.cont_fit_box.addItem("Power Law (2500A + BC 30%)")
         self.cont_fit_box.addItem("Power Law (2500A + flexible BC)")
+        self.cont_fit_box.addItem("Power Law (2500A + manual BC)")
         self.cont_fit_box.addItem("Balmer Continuum")
         self.cont_fit_box.addItem("Tsuzuki06")
         self.cont_fit_box.addItem("Vestergaard 01")
@@ -1460,6 +1470,8 @@ class SpecFitGui(QMainWindow):
         self.cont_fit_box.addItem("Iron template 2200-3500 (V01)")
         self.cont_fit_box.addItem("Iron template 2200-3500 (T06, cont.)")
         self.cont_fit_box.addItem("Iron template 2200-3500 (V01, cont.)")
+        self.cont_fit_box.addItem("Iron template 2200-3500 new (T06, cont.)")
+        self.cont_fit_box.addItem("Iron template 2200-3500 new (V01, cont.)")
         self.cont_fit_box.addItem("Iron template 3700-5600")
         self.cont_fit_box.addItem("Iron template 3700-5600 (cont.)")
         # self.cont_fit_box.addItem("FeIII VW01")
@@ -1953,6 +1965,42 @@ class SpecFitGui(QMainWindow):
 
                 cont_model = Model(power_law_at_2500A_plus_flexible_BC, prefix=prefix)
 
+            elif cont_model_name == "Power Law (2500A + manual BC)":
+
+                cont_params = Parameters()
+                if hasattr(self, 'flux_2500'):
+                    amp_guess = self.flux_2500
+                else:
+                    amp_guess = 2.5e-10
+                if hasattr(self, 'redshift'):
+                    redsh_guess = self.redshift
+                else:
+                    redsh_guess = 3.0
+
+                cont_params.add('z', value=redsh_guess, min=0, max=1080,
+                                vary=False)
+
+                cont_params.add(prefix + 'z', value=redsh_guess, min=0,
+                                max=1080, vary=False, expr='z')
+
+                cont_params.add(prefix + 'amp', value=amp_guess,
+                                )
+                cont_params.add(prefix + 'slope', value=-1.5, min=-2.5,
+                                max=-0.3)
+
+                cont_params.add(prefix + 'amp_BE', value=1e-10, min=0.0,
+                                max=1e-5, vary=True)
+
+                cont_params.add(prefix + 'T_e', value=15000, min=10000,
+                                max=20000, vary=False)
+                cont_params.add(prefix + 'tau_BE', value=1.0, min=0.1, max=2.0,
+                                vary=False)
+
+                cont_params.add(prefix + 'lambda_BE', value=3646, vary=False)
+
+                cont_model = Model(power_law_at_2500A_plus_manual_BC,
+                                   prefix=prefix)
+
 
             elif cont_model_name == "Balmer Continuum":
 
@@ -2056,6 +2104,22 @@ class SpecFitGui(QMainWindow):
                         redshift=self.redshift, flux_2500=self.flux_2500)
                 else:
                     cont_model, cont_params = iron_template_MgII_V01()
+
+            elif cont_model_name == "Iron template 2200-3500 new (T06, cont.)":
+
+                if self.redshift is not None:
+                    cont_model, cont_params = iron_template_MgII_new(
+                        redshift=self.redshift, flux_2500=self.flux_2500)
+                else:
+                    cont_model, cont_params = iron_template_MgII_new()
+
+            elif cont_model_name == "Iron template 2200-3500 new (V01, cont.)":
+
+                if self.redshift is not None:
+                    cont_model, cont_params = iron_template_MgII_V01_new(
+                        redshift=self.redshift, flux_2500=self.flux_2500)
+                else:
+                    cont_model, cont_params = iron_template_MgII_V01_new()
 
             elif cont_model_name == "Iron template 1200-2200 (cont.)":
 

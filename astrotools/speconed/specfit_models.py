@@ -33,7 +33,8 @@ import matplotlib.transforms as mtransforms
 
 
 from .speconed import datadir
-
+# datadir = os.path.split(__file__)[0]
+# datadir = os.path.split(datadir)[0] + '/data/'
 
 c_km_s = const.c.to('km/s').value
 
@@ -277,6 +278,42 @@ def power_law_at_2500A_plus_flexible_BC(x, amp, slope, z, f, T_e, tau_BE,
     return pl_flux + bc_flux
 
 
+def power_law_at_2500A_plus_manual_BC(x, amp, slope, z, amp_BE, T_e, tau_BE,
+                                       lambda_BE):
+    """
+    Power law anchored at 2500 (Angstroem) plus a Balmer continuum model with
+    a fixed flux of 30% of the power law flux at 3645A.
+    :param x:
+    :param amp:
+    :param slope:
+    :param z:
+    :param T_e:
+    :param tau_BE:
+    :param lambda_BE:
+    :return:
+    """
+
+
+
+    pl_flux =  amp * (x / (2500. * (z + 1.))) ** slope
+
+    # pl_flux_at_BE = amp * ((lambda_BE * (z + 1.)) / (2500. * (z + 1.))) ** slope
+
+
+    x = x / (1. + z)
+
+    F_BC0 = amp_BE /(blackbody_lambda(lambda_BE, T_e).value * (
+                1. - np.exp(-tau_BE)))
+
+    bc_flux = F_BC0 * \
+              blackbody_lambda(x, T_e).value * (
+                1. - np.exp(-tau_BE * (x / lambda_BE) ** 3))
+
+    bc_flux[x >= lambda_BE] = bc_flux[x >= lambda_BE] * 0
+
+    return pl_flux + bc_flux
+
+
 # ------------------------------------------------------------------------------
 # Basic Models
 # ------------------------------------------------------------------------------
@@ -426,6 +463,21 @@ def template_model(x, amp, z, fwhm, templ_disp=None, templ_flux=None):
 
     return f(x)*amp
 
+def template_model_new(x, amp, z, fwhm, intr_fwhm, templ_disp=None,
+                   templ_flux=None):
+
+    template_spec = sod.SpecOneD(dispersion=templ_disp, flux=templ_flux,
+                                 unit='f_lam')
+    # artifical broadening
+    convol_fwhm = np.sqrt(fwhm**2-intr_fwhm**2)
+    spec = template_spec.convolve_loglam(convol_fwhm)
+    # shift in redshift
+    spec = spec.redshift(z)
+    # return interpolation function
+    f = sp.interpolate.interp1d(spec.dispersion, spec.flux, kind='linear',
+                                bounds_error=False, fill_value=(0, 0))
+
+    return f(x)*amp
 
 def load_template_model(template_filename=None, fwhm=None, redshift=None,
                         prefix=None, flux_2500=None, wav_limits=None,
@@ -461,11 +513,69 @@ def load_template_model(template_filename=None, fwhm=None, redshift=None,
 
 
 
-    templ_params.add(prefix +'z', value=redshift, min=0, max=1089, expr='z')
+    templ_params.add(prefix +'z', value=redshift, min=0, max=1089)
     templ_params.add(prefix+'fwhm', value=fwhm)
     # Set amplitude to 1 initially and then calculate first  best guess flux
     # below
     templ_params.add(prefix+'amp', value=1.0e-4, min=1.0e-10, max=1.0)
+
+    # normalize the template if possible
+    if flux_2500 is not None:
+        print("FLUX2500", flux_2500)
+        if norm_wavelength is None:
+            templ_params[prefix + 'amp'].set(value=flux_2500)
+        else:
+            model_flux = templ_model.eval(templ_params,
+                                          x=norm_wavelength*(1.+redshift))
+            print("Model_flux", model_flux)
+            new_amp = flux_2500 / model_flux*0.5
+            templ_params[prefix+'amp'].set(value=new_amp)
+
+    else:
+        templ_params[prefix + 'amp'].set(value=1.0e-15)
+
+    return templ_model, templ_params
+
+def load_template_model_new(template_filename=None, fwhm=None, redshift=None,
+                        prefix=None, flux_2500=None, wav_limits=None,
+                        norm_wavelength=None, intr_fwhm=900):
+
+    templ_params = Parameters()
+    templ_params.add('z', value=redshift, min=0, max=1089)
+
+    if redshift is None:
+        redshift = 1.0
+    if fwhm is None:
+        fwhm = 900
+
+    template = np.genfromtxt(datadir+'iron_templates/'+template_filename)
+
+    if wav_limits is not None:
+        wav_min = wav_limits[0]
+        wav_max = wav_limits[1]
+
+        idx_min = np.argmin(np.abs(template[:, 0] - wav_min))
+        idx_max = np.argmin(np.abs(template[:, 0] - wav_max))
+
+        templ_model = Model(template_model_new,
+                            templ_disp=template[idx_min:idx_max, 0],
+                            templ_flux=template[idx_min:idx_max, 1],
+                            prefix=prefix)
+
+    else:
+        templ_model = Model(template_model_new,
+                            templ_disp=template[:, 0],
+                            templ_flux=template[:, 1],
+                            prefix=prefix)
+
+
+
+    templ_params.add(prefix +'z', value=redshift, min=0, max=1089)
+    templ_params.add(prefix+'fwhm', value=fwhm)
+    # Set amplitude to 1 initially and then calculate first  best guess flux
+    # below
+    templ_params.add(prefix+'amp', value=1.0e-4, min=1.0e-10, max=1.0)
+    templ_params.add(prefix + 'intr_fwhm', value=intr_fwhm, vary=False)
 
     # normalize the template if possible
     if flux_2500 is not None:
@@ -689,6 +799,26 @@ def iron_template_MgII_V01(fwhm=None, redshift=None, flux_2500=None):
 
     return templ_model, templ_params
 
+def iron_template_MgII_new(fwhm=None, redshift=None, flux_2500=None):
+
+    # 2200-3500 Tsuzuki 2006
+    templ_model, templ_params = load_template_model_new(
+        template_filename='Tsuzuki06.txt', fwhm=fwhm, redshift=redshift,
+        prefix='FeIIMgII_', flux_2500=flux_2500, wav_limits=[2200, 3500],
+        norm_wavelength=2500, intr_fwhm=900)
+
+    return templ_model, templ_params
+
+def iron_template_MgII_V01_new(fwhm=None, redshift=None, flux_2500=None):
+
+    # 2200-3500 Vestergaard 2001
+    templ_model, templ_params = load_template_model_new(
+        template_filename='Fe_UVtemplt_A.asc', fwhm=fwhm, redshift=redshift,
+        prefix='FeIIMgII_', flux_2500=flux_2500, wav_limits=[2200, 3500],
+        norm_wavelength=2500, intr_fwhm=900)
+
+    return templ_model, templ_params
+
 def iron_template_CIV(fwhm=None, redshift=None, flux_2500=None):
 
     # 1200-2200 Vestergaard 2001
@@ -744,7 +874,8 @@ def create_line_model_HbOIII_6G(fit_z=False, redsh=0.0, flux_2500=None):
         amplitudes = np.array([20, 2, 5, 5, 5, 5]) * 1.0E-16
 
     widths = [2500, 900, 900, 900, 1200, 1200]
-    central_wavs = [4861, 4861, 4960.30, 4960.30, 5008.24, 5008.24]
+    central_wavs = [4862.68, 4862.68, 4960.30, 4960.30, 5008.24, 5008.24] #
+    # VandenBerk2001
     shifts = [0, 0, 0, 0, 0, 0]
 
     param_list = []
@@ -810,7 +941,7 @@ def create_line_model_HbOIII_4G(fit_z=False, redsh=0.0, flux_2500=None):
         amplitudes = np.array([20, 2, 5, 5]) * 1.0E-16
 
     widths = [2500, 900, 1200, 1200]
-    central_wavs = [4861, 4861, 4960.30, 5008.24]
+    central_wavs = [4862.68, 4862.68, 4960.30, 5008.24]
     shifts = [0, 0, 0, 0]
 
     param_list = []
@@ -1049,10 +1180,12 @@ def create_line_model_MgII_2G(fit_z=False, redsh=0.0, flux_2500=None):
         pars = Parameters()
 
         if fit_z:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.98, max=max(redsh * 1.02,
+                                                                 1),
                      vary=True)
         else:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.98, max=max(redsh * 1.02,
+                                                                 1),
                      vary=False)
 
         params, model = emission_line_model(amp=amplitudes[idx],
@@ -1103,10 +1236,12 @@ def create_line_model_MgII_1G(fit_z=False, redsh=0.0, flux_2500=None):
         pars = Parameters()
 
         if fit_z:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.98, max=max(redsh * 1.02,
+                                                                 1),
                      vary=True)
         else:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.98, max=max(redsh * 1.02,
+                                                                 1),
                      vary=False)
 
         params, model = emission_line_model(amp=amplitudes[idx],
@@ -1153,10 +1288,12 @@ def create_line_model_CIV_2G(fit_z=False, redsh=0.0, flux_2500=None):
         pars = Parameters()
 
         if fit_z:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.98, max=max(redsh * 1.02,
+                                                                 1),
                      vary=True)
         else:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.98, max=max(redsh * 1.02,
+                                                                 1),
                      vary=False)
 
         params, model = emission_line_model(amp=amplitudes[idx],
@@ -1208,10 +1345,12 @@ def create_line_model_CIV_1G(fit_z=False, redsh=0.0, flux_2500=None):
         pars = Parameters()
 
         if fit_z:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.98, max=max(redsh * 1.02,
+                                                                 1),
                      vary=True)
         else:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.98, max=max(redsh * 1.02,
+                                                                 1),
                      vary=False)
 
         params, model = emission_line_model(amp=amplitudes[idx],
@@ -1303,10 +1442,10 @@ def create_line_model_CIII(fit_z=True, redsh=0.0, flux_2500=None):
     params.add('cIII_cen_alIII', value=1857.40, vary=False)
 
     if fit_z:
-        params.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05, 1),
+        params.add('z', value=redsh, min=redsh * 0.98, max=max(redsh * 1.02, 1),
                  vary=True)
     else:
-        params.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05, 1),
+        params.add('z', value=redsh, min=redsh * 0.98, max=max(redsh * 1.02, 1),
                  vary=False)
 
     params.add('cIII_z', value=redsh, vary=True)
@@ -1350,10 +1489,12 @@ def create_line_model_HeII_HighZ(fit_z=False, redsh=0.0, flux_2500=None):
         pars = Parameters()
 
         if fit_z:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                 1),
                      vary=True)
         else:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                 1),
                      vary=False)
 
         params, model = emission_line_model(amp=amplitudes[idx],
@@ -1398,10 +1539,12 @@ def create_line_model_SiIV_HighZ(fit_z=False, redsh=0.0, flux_2500=None):
         pars = Parameters()
 
         if fit_z:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                 1),
                      vary=True)
         else:
-            pars.add('z', value=redsh, min=redsh * 0.9, max=max(redsh * 1.1, 1),
+            pars.add('z', value=redsh, min=redsh * 0.95, max=max(redsh * 1.05,
+                                                                 1),
                      vary=False)
 
         params, model = emission_line_model(amp=amplitudes[idx],
