@@ -487,7 +487,7 @@ class SpecOneD(object):
                         )
 
     def override_raw(self):
-        """ Override the raw_dispersion, raw_flux and raw_flux_err
+        """ Override the raw_dispersion, raw_fluxden and raw_fluxden_err
         variables in the SpecOneD class with the current dispersion, flux and
         flux_err values.
         """
@@ -498,8 +498,8 @@ class SpecOneD(object):
 
     def restore(self):
         """ Override the dispersion, flux and flux_err
-        variables in the SpecOneD class with the raw_dispersion, raw_flux and
-        raw_flux_err values.
+        variables in the SpecOneD class with the raw_dispersion, raw_fluxden and
+        raw_fluxden_err values.
         """
 
         self.dispersion = self.raw_dispersion
@@ -1051,7 +1051,7 @@ class SpecOneD(object):
 
 
     def plot(self, show_flux_err=False, show_raw_flux=False,
-             mask_values=False):
+             mask_values=False, save=False, save_filename='spectrum.pdf'):
 
         """Plot the spectrum
 
@@ -1107,7 +1107,10 @@ class SpecOneD(object):
         # ylim_max = lim_spec.flux[lim_spec.mask].max()
         self.ax.set_ylim(ylim_min, ylim_max)
 
-        plt.show()
+        if save:
+            plt.savefig(save_filename)
+        else:
+            plt.show()
 
     def get_specplot_ylim(self):
 

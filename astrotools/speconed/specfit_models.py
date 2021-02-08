@@ -839,6 +839,16 @@ def iron_template_Hb(fwhm=None, redshift=None, flux_2500=None):
 
     return templ_model, templ_params
 
+def iron_template_Hb_new(fwhm=None, redshift=None, flux_2500=None):
+
+    # 3700-5600 Boronson & Green 1992
+    templ_model, templ_params = load_template_model_new(
+        template_filename='Fe_OPT_BR92_linear.txt', fwhm=fwhm, redshift=redshift,
+        prefix='FeIIHb_', flux_2500=flux_2500, wav_limits=[3700, 5600],
+        norm_wavelength=1450, intr_fwhm=900)
+
+    return templ_model, templ_params
+
 
 def balmer_continuum_model(x, z, flux_BE, T_e, tau_BE, lambda_BE):
 

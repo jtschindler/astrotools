@@ -1474,6 +1474,7 @@ class SpecFitGui(QMainWindow):
         self.cont_fit_box.addItem("Iron template 2200-3500 new (V01, cont.)")
         self.cont_fit_box.addItem("Iron template 3700-5600")
         self.cont_fit_box.addItem("Iron template 3700-5600 (cont.)")
+        self.cont_fit_box.addItem("Iron template 3700-5600 new (cont.)")
         # self.cont_fit_box.addItem("FeIII VW01")
         # self.cont_fit_box.addItem("FeII BG92")
 
@@ -2137,7 +2138,13 @@ class SpecFitGui(QMainWindow):
                 else:
                     cont_model, cont_params = iron_template_Hb()
 
+            elif cont_model_name == "Iron template 3700-5600 new (cont.)":
 
+                if self.redshift is not None:
+                    cont_model, cont_params = iron_template_Hb_new(
+                        redshift=self.redshift, flux_2500=self.flux_2500)
+                else:
+                    cont_model, cont_params = iron_template_Hb_new()
 
             if isinstance(cont_model, list) and isinstance(cont_params, list):
                 self.cont_model_list.extend(cont_model)

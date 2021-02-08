@@ -73,9 +73,6 @@ def convert_hmsra2decdeg(ra_hms, delimiter=':'):
         ra_minutes = float(ra_hms[3:5])
         ra_seconds = float(ra_hms[6:12])
 
-    # print(ra_hours, ra_minutes, ra_seconds)
-    # print((ra_hours + ra_minutes/60. + ra_seconds/3600.) * 15.)
-
     return (ra_hours + ra_minutes/60. + ra_seconds/3600.) * 15.
 
 

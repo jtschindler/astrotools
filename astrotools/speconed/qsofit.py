@@ -823,7 +823,7 @@ def calc_Halpha_BH_mass(L_Halpha, FWHM_Halpha):
 
     if not np.isnan(FWHM_Halpha) or not np.isnan(L_Halpha):
 
-        return 2.0 * 1e+6 *  (FWHM_Halpha/1000)**2.06 * (L_Halpha/
+        return 2.0 * 1e+6 * (FWHM_Halpha/1000)**2.06 * (L_Halpha/
                                                        10**42)**0.55, \
                reference
 
