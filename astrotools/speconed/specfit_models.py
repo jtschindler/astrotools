@@ -32,9 +32,9 @@ import matplotlib.transforms as mtransforms
 
 
 
-from .speconed import datadir
-# datadir = os.path.split(__file__)[0]
-# datadir = os.path.split(datadir)[0] + '/data/'
+# from .speconed import datadir
+datadir = os.path.split(__file__)[0]
+datadir = os.path.split(datadir)[0] + '/data/'
 
 c_km_s = const.c.to('km/s').value
 

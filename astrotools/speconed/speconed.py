@@ -230,6 +230,90 @@ class SpecOneD(object):
             self.obj_model = hdu[exten].data['OBJ_MODEL']*1e-17
 
 
+    def read_pypeit_fits_new(self, filename, unit='f_lam', exten=1):
+        """ Read a 1D fits pypeit fits file to populate the SpecOneD class.
+
+        :param filename: str
+            Path/Filename of the pypeit 1D fits file
+        :param unit:
+            The unit of the flux measurement in the fits file. This defaults
+            to flux per wavelength (erg/s/cm^2/Angstroem)
+        """
+
+        # Open the fits file
+        try:
+            hdu = fits.open(filename)
+        except:
+            raise ValueError("Filename not found", str(filename))
+
+        self.header = hdu[0].header
+        self.unit = unit
+
+        # Check pypeit header keywords
+        #
+        # dispersion
+        if 'OPT_WAVE' in hdu[exten].columns.names:
+            self.dispersion = hdu[exten].data['OPT_WAVE']
+        if 'wave' in hdu[exten].columns.names:
+            self.dispersion = hdu[exten].data['wave']
+        # flux density
+        if 'OPT_FLAM' in hdu[exten].columns.names:
+            self.flux = hdu[exten].data['OPT_FLAM']* 1e-17
+        if 'flux' in hdu[exten].columns.names:
+            self.flux = hdu[exten].data['flux']* 1e-17
+
+        # mask
+        if 'OPT_MASK' in hdu[exten].columns.names:
+            self.mask = np.array(hdu[exten].data['OPT_MASK'], dtype=bool)
+        if 'mask' in hdu[exten].columns.names:
+            self.mask = np.array(hdu[exten].data['mask'], dtype=bool)
+
+        # ivar
+        if 'OPT_FLAM_IVAR' in hdu[exten].columns.names:
+            self.flux_ivar = hdu[exten].data['OPT_FLAM_IVAR']
+        if 'ivar' in hdu[exten].columns.names:
+            self.flux_ivar = hdu[exten].data['ivar']
+            if 'sigma' not in hdu[exten].columns.names:
+                # No flux density 1 sigma error stored in this format
+                # Calculate the 1 sigma error.
+                self.get_fluxden_error_from_ivar()
+        # 1 sigma flux density error
+        if 'OPT_FLAM_SIG' in hdu[exten].columns.names:
+            self.flux_err = hdu[exten].data['OPT_FLAM_SIG'] * 1e-17
+
+
+
+        # Mask all pixels where the flux error is 0
+        new_mask = np.ones_like(self.mask, dtype=bool)
+        new_mask[self.flux_err == 0] = 0
+        self.mask = new_mask
+
+        # self.dispersion_unit = 1. * u.AA
+        # self.fluxden_unit = 1e-17*u.erg/u.s/u.cm**2/u.AA
+
+        if 'TELLURIC' in hdu[exten].columns.names:
+            self.telluric = hdu[exten].data['TELLURIC']
+        if 'OBJ_MODEL' in hdu[exten].columns.names:
+            self.obj_model = hdu[exten].data['OBJ_MODEL']* 1e-17
+
+
+    def get_fluxden_error_from_ivar(self):
+        """Calculate the flux density 1-sigma error from the inverse variance
+        of the flux density/
+
+        :return:
+        """
+
+        if self.flux_ivar is None:
+            self.flux_err = None
+        else:
+            sigma = np.zeros_like(self.flux_ivar)
+            valid = self.flux_ivar > 0
+            sigma[valid] = 1./np.sqrt(self.flux_ivar[valid])
+
+            self.flux_err = sigma
+
+
     def read_from_fits(self, filename, unit='f_lam'):
         """Read a 1D fits file to populate the SpecOneD class.
 
